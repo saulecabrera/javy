@@ -36,6 +36,13 @@ fn main() -> Result<()> {
             fs::write(&opts.output, wasm)?;
             Ok(())
         }
+        Command::Aot(opts) => {
+            let source = std::fs::read(&opts.input)?;
+            let bytes = bytecode::compile_source(&source)?;
+            jacc::compile(&bytes)?;
+
+            Ok(())
+        }
     }
 }
 

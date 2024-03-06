@@ -9,6 +9,15 @@ pub enum Command {
     /// Emits the provider binary that is required to run dynamically
     /// linked WebAssembly modules.
     EmitProvider(EmitProviderCommandOpts),
+    /// Ahead-of-time compilation of JavaScript to WebAssembly.
+    Aot(AotOptions),
+}
+
+#[derive(Debug, StructOpt)]
+pub struct AotOptions {
+    /// Path of the JavaScript input file.
+    #[structopt(parse(from_os_str))]
+    pub input: PathBuf,
 }
 
 #[derive(Debug, StructOpt)]

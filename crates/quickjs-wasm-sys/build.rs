@@ -220,6 +220,7 @@ async fn main() -> Result<()> {
         .define("_GNU_SOURCE", None)
         .define("CONFIG_VERSION", "\"2021-03-27\"")
         .define("CONFIG_BIGNUM", None)
+        .define("DUMP_BYTECODE", None)
         .cargo_metadata(true)
         // The below flags are used by the official Makefile.
         .flag_if_supported("-Wchar-subscripts")
