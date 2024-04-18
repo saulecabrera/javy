@@ -36,7 +36,7 @@ impl CustomSection for SourceCodeSection {
 
 pub fn module_config() -> ModuleConfig {
     let mut config = ModuleConfig::new();
-    config.generate_name_section(false);
+    config.generate_name_section(true);
     config
 }
 
