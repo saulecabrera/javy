@@ -137,7 +137,7 @@ fn optimize_wasm(wasm: &[u8]) -> Result<Vec<u8>> {
 
     OptimizationOptions::new_opt_level_3() // Aggressively optimize for speed.
         .shrink_level(ShrinkLevel::Level0) // Don't optimize for size at the expense of performance.
-        .debug_info(false)
+        .debug_info(true)
         .run(&tempfile_path, &tempfile_path)?;
 
     Ok(fs::read(&tempfile_path)?)
