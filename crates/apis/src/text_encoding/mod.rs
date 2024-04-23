@@ -4,7 +4,7 @@ use crate::{APIConfig, JSApiSet};
 use anyhow::{anyhow, bail, Error, Result};
 use javy::{
     hold, hold_and_release,
-    quickjs::{context::EvalOptions, Exception, Function, String as JSString, TypedArray, Value},
+    quickjs::{context::EvalOptions, ArrayBuffer, Exception, Function, String as JSString, Value},
     to_js_error, to_string_lossy, Args, Runtime,
 };
 
@@ -114,7 +114,12 @@ fn encode(args: Args<'_>) -> Result<Value<'_>> {
         .to_string()
         .unwrap_or_else(|error| to_string_lossy(&cx, js_string, error));
 
-    Ok(TypedArray::new(cx, encoded.into_bytes())?
+    // TODO: Previously we were returning a `TypedArray`, but there seems to
+    // be a bug, visible only when the `error_column_number.patch` is excluded
+    // in `rquickjs`. This doesn't seem to be related to the bytecode, but it
+    // seems to be related to how constructors are invoked.
+    // https://github.com/saulecabrera/rquickjs/compare/master...wasi-patch
+    Ok(ArrayBuffer::new_copy(cx, encoded.as_bytes())?
         .as_value()
         .to_owned())
 }
