@@ -19,3 +19,6 @@ text_encoding = []
 anyhow = { workspace = true }
 fastrand = { version = "2.0.2", optional = true }
 javy = { workspace = true, features = ["json"] }
+simd-json = { version = "0.13.10", default-features = false, features = [
+    "big-int-as-float",
+] }

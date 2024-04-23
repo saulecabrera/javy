@@ -1,8 +1,11 @@
 use crate::{APIConfig, JSApiSet};
+mod llrt_json;
 use anyhow::Error;
 use javy::{
     hold, hold_and_release, json,
-    quickjs::{Function, String as JSString, Value},
+    quickjs::{
+        atom::PredefinedAtom, prelude::Func, Ctx, Function, Object, String as JSString, Value,
+    },
     Args,
 };
 use std::io::{Read, Write};
@@ -13,7 +16,6 @@ impl JSApiSet for Json {
     fn register(&self, runtime: &javy::Runtime, _: &APIConfig) -> anyhow::Result<()> {
         runtime.context().with(|this| {
             let globals = this.globals();
-
             globals.set(
                 "__javy_json_parse",
                 Function::new(this.clone(), |cx, args| {
@@ -54,11 +56,17 @@ impl JSApiSet for Json {
     }
 }
 
+fn llrt_parse_json_string<'js>(ctx: Ctx<'js>, value: Value<'js>) -> Value<'js> {
+    let string = value.as_string().unwrap().to_string().unwrap();
+    let bytes = string.into_bytes();
+    llrt_json::json_parse(&ctx, bytes).unwrap()
+}
+
 fn parse(a: Args<'_>) -> Value<'_> {
     let (cx, args) = a.release();
 
     let string = args[0].as_string().unwrap().to_string().unwrap();
-    json::transcode_input(cx.clone(), &string.as_bytes()).unwrap()
+    llrt_json::json_parse(&cx, string.into()).unwrap()
 }
 
 fn stringify_value(a: Args<'_>) -> Value<'_> {
@@ -75,10 +83,11 @@ fn stringify_value(a: Args<'_>) -> Value<'_> {
 fn from_stdin(a: Args<'_>) -> Value<'_> {
     let (cx, _) = a.release();
     let mut bytes = Vec::with_capacity(10000);
+
     let mut fd = std::io::stdin();
     fd.read_to_end(&mut bytes).unwrap();
 
-    json::transcode_input(cx.clone(), &bytes).unwrap()
+    llrt_json::json_parse(&cx, bytes).unwrap()
 }
 
 fn to_stdout(a: Args<'_>) {
