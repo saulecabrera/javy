@@ -86,4 +86,5 @@ fn to_stdout(a: Args<'_>) {
     let mut fd = std::io::stdout();
     let out = json::transcode_output(args[0].clone()).unwrap();
     fd.write_all(&out).unwrap();
+    fd.flush().unwrap();
 }
