@@ -2198,8 +2198,7 @@ dependencies = [
 [[package]]
 name = "rquickjs"
 version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ad7f63201fa6f2ff8173e4758ea552549d687d8f63003361a8b5c50f7c446ded"
+source = "git+https://github.com/saulecabrera/rquickjs?branch=wasi-patch#d90b4221845e798effe5dedd6ea6ac746858cb9e"
 dependencies = [
  "rquickjs-core",
 ]
@@ -2207,8 +2206,7 @@ dependencies = [
 [[package]]
 name = "rquickjs-core"
 version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cad00eeddc0f88af54ee202c8385fb214fe0423897c056a7df8369fb482e3695"
+source = "git+https://github.com/saulecabrera/rquickjs?branch=wasi-patch#d90b4221845e798effe5dedd6ea6ac746858cb9e"
 dependencies = [
  "rquickjs-sys",
 ]
@@ -2216,8 +2214,7 @@ dependencies = [
 [[package]]
 name = "rquickjs-sys"
 version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "120dbbc3296de9b96de8890091635d46f3506cd38b4e8f21800c386c035d64fa"
+source = "git+https://github.com/saulecabrera/rquickjs?branch=wasi-patch#d90b4221845e798effe5dedd6ea6ac746858cb9e"
 dependencies = [
  "cc",
 ]
