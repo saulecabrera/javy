@@ -159,6 +159,15 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                 )
                 .unwrap(),
             );
+            function_cases.push(
+                FunctionCase::new(
+                    Path::new("benches/functions/large_io"),
+                    Path::new("index.js"),
+                    &compilation,
+                    linking,
+                )
+                .unwrap(),
+            );
         }
     }
 
