@@ -1,6 +1,9 @@
 use anyhow::{anyhow, Result};
 use wasi_common::{sync::WasiCtxBuilder, WasiCtx};
-use wasmtime::{AsContextMut, Engine, Instance, Linker, Memory, Module, Store};
+use wasmtime::{
+    AsContextMut, Engine, Extern, ExternType, Func, FuncType, Instance, Linker, Memory, Module,
+    Store,
+};
 
 pub const QUICKJS_PROVIDER_MODULE: &[u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/provider.wasm"));
@@ -24,6 +27,27 @@ fn create_wasm_env() -> Result<(Store<WasiCtx>, Instance, Memory)> {
     )?;
     let wasi = WasiCtxBuilder::new().inherit_stderr().build();
     let mut store = Store::new(&engine, wasi);
+
+    for import in module.imports() {
+        // No simon imports are needed for compilation. Simply mock them.
+        if import.module() == "simon" {
+            match import.ty() {
+                ExternType::Func(f) => {
+                    let ty = FuncType::new(&engine, f.params(), f.results());
+                    let f = Func::new(store.as_context_mut(), ty, |_, _, _| unreachable!());
+
+                    linker.define(
+                        store.as_context_mut(),
+                        import.module(),
+                        import.name(),
+                        Extern::Func(f),
+                    )?;
+                }
+                _ => unreachable!(),
+            }
+        }
+    }
+
     let instance = linker.instantiate(store.as_context_mut(), &module)?;
     let memory = instance
         .get_memory(store.as_context_mut(), "memory")

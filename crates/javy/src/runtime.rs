@@ -6,6 +6,7 @@ use crate::{
     Config,
 };
 
+use crate::apis::Simon;
 #[cfg(feature = "json")]
 use crate::apis::{JavyJson, Json};
 
@@ -144,6 +145,8 @@ impl Runtime {
                     JavyJson::add_intrinsic(ctx.as_raw())
                 }
             }
+
+            unsafe { Simon::add_intrinsic(ctx.as_raw()) }
         });
 
         Ok(ManuallyDrop::new(context))
