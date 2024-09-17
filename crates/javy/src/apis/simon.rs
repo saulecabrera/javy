@@ -53,8 +53,7 @@ fn register<'js>(this: Ctx<'js>) -> Result<()> {
                 let scope = &args[0];
                 let index = &args[1];
 
-                // TODO: Must be a usize.
-                assert!(index.is_float());
+                // TODO: Index must be a usize.
                 assert!(scope.is_int());
 
                 let val = unsafe {
