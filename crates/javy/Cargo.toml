@@ -24,7 +24,7 @@ quickcheck = "1"
 bitflags = { workspace = true }
 fastrand = "2.1.1"
 simd-json = { version = "0.13.10", optional = true, default-features = false, features = ["big-int-as-float", "serde_impl"] }
-simon-defs = { path = "../../../../simon/simon-defs/" }
+simon = { path = "../../../../simon/simon/", default-features = false, features = ["bjson"]}
 
 [dev-dependencies]
 javy-test-macros = { path = "../test-macros/" }

@@ -60,7 +60,7 @@ pub(crate) mod console;
 #[cfg(feature = "json")]
 pub(crate) mod json;
 pub(crate) mod random;
-pub(crate) mod simon;
+pub(crate) mod simon_intrinsic;
 pub(crate) mod stream_io;
 pub(crate) mod text_encoding;
 
@@ -68,6 +68,6 @@ pub(crate) use console::*;
 #[cfg(feature = "json")]
 pub(crate) use json::*;
 pub(crate) use random::*;
-pub(crate) use simon::*;
+pub(crate) use simon_intrinsic::*;
 pub(crate) use stream_io::*;
 pub(crate) use text_encoding::*;
