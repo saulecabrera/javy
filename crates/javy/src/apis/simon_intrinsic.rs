@@ -1,13 +1,95 @@
+use crate::hold;
 use crate::quickjs::context::Intrinsic;
 use crate::quickjs::{
     prelude::{MutFn, Rest},
-    qjs, Ctx, Function, Object, Value,
+    qjs, Array, Ctx, Function, Object, String as JSString, Value,
 };
+use crate::serde::de::Deserializer;
+use crate::Args;
 use anyhow::Result;
-use simon::bjson::BJsonAPI;
+use jsonbb::{Builder, ValueRef};
+use simon::bjson::input;
+use std::io::Write;
 use std::ptr::NonNull;
 
 pub struct Simon;
+
+fn read_input<'a>(args: Args<'a>) -> Result<Value<'a>> {
+    let input = input();
+    let ctx = args.0;
+    // TODO: Wrongly assuming that all inputs are objects. That's potentially
+    // true in the correct cases. However we must validate the type of input and
+    // act accordingly.
+
+    // TODO: Here we'd need to introduce the artifact handling, or we could,
+    // instead of inlining the artifact handling, call the query property method
+    // from Simon's bjson API and let all the artifact handling logic live
+    // there.
+    let result = Object::new(ctx.clone())?;
+    if let Some(oref) = input.ref_.as_object() {
+        for (k, v) in oref.iter() {
+            result.set(k, handle_value(ctx.clone(), v)?)?;
+        }
+    }
+
+    Ok(Value::from_object(result))
+}
+
+fn write_output<'a>(args: Args<'a>) -> Result<Value<'a>> {
+    let ctx = args.0;
+    let val = args
+        .1
+        .first()
+        .cloned()
+        .unwrap_or_else(|| Value::new_undefined(ctx.clone()));
+
+    let mut de = Deserializer::from(val);
+    let mut ser = Builder::default();
+
+    serde_transcode::transcode(&mut de, &mut ser)?;
+
+    let val = ser.finish();
+
+    let mut stdout = std::io::stdout();
+    stdout.write(val.as_bytes()).expect("write to succeed");
+    stdout.flush().expect("flush to succeed");
+
+    Ok(Value::new_undefined(ctx.clone()))
+}
+
+fn handle_value<'js>(ctx: Ctx<'js>, value: ValueRef<'_>) -> Result<Value<'js>> {
+    match value {
+        ValueRef::String(str) => Ok(Value::from_string(JSString::from_str(ctx.clone(), str)?)),
+        ValueRef::Null => Ok(Value::new_null(ctx.clone())),
+        ValueRef::Bool(b) => Ok(Value::new_bool(ctx.clone(), b)),
+        ValueRef::Number(n) => {
+            let number = if n.is_u64() {
+                n.as_u64().unwrap() as f64
+            } else if n.is_i64() {
+                n.as_i64().unwrap() as f64
+            } else if n.is_f64() {
+                n.as_f64().unwrap()
+            } else {
+                unreachable!()
+            };
+            Ok(Value::new_number(ctx.clone(), number))
+        }
+        ValueRef::Object(oref) => {
+            let obj = Object::new(ctx.clone())?;
+            for (k, v) in oref.iter() {
+                obj.set(k, handle_value(ctx.clone(), v)?)?;
+            }
+            Ok(Value::from_object(obj))
+        }
+        ValueRef::Array(a) => {
+            let result = Array::new(ctx.clone())?;
+            for (i, v) in a.iter().enumerate() {
+                result.set(i, handle_value(ctx.clone(), v)?)?;
+            }
+            Ok(Value::from_array(result))
+        }
+    }
+}
 
 impl Intrinsic for Simon {
     unsafe fn add_intrinsic(cx: NonNull<qjs::JSContext>) {
@@ -20,171 +102,21 @@ fn register<'js>(this: Ctx<'js>) -> Result<()> {
     let simon = Object::new(this.clone())?;
 
     simon.set(
-        "valueAtProp",
+        "readInput",
         Function::new(
             this.clone(),
-            MutFn::new(move |_: Ctx<'js>, args: Rest<Value<'js>>| {
-                let scope = &args[0];
-                let name = &args[1];
-
-                assert!(scope.is_int());
-                assert!(name.is_string());
-
-                // TODO: Handle non-utf8 encoded strings gracefully or add
-                // support for this encoding somehow.
-                let name = name.as_string().unwrap().to_string().unwrap();
-
-                let api = BJsonAPI;
-                let val = api.bjson_value_at_prop(
-                    scope.as_int().unwrap() as _,
-                    name.as_ptr(),
-                    name.len(),
-                );
-
-                val as usize
+            MutFn::new(move |this: Ctx<'js>, args: Rest<Value<'js>>| {
+                read_input(hold!(this.clone(), args)).unwrap()
             }),
         ),
     )?;
 
     simon.set(
-        "valueAtIndex",
+        "writeOutput",
         Function::new(
             this.clone(),
-            MutFn::new(move |_: Ctx<'js>, args: Rest<Value<'js>>| {
-                let scope = &args[0];
-                let index = &args[1];
-
-                // TODO: Index must be a usize.
-                assert!(scope.is_int());
-
-                let api = BJsonAPI;
-                let val = api.bjson_value_at_index(
-                    scope.as_int().unwrap() as _,
-                    index.as_number().unwrap() as usize,
-                );
-
-                val as usize
-            }),
-        ),
-    )?;
-
-    simon.set(
-        "valueType",
-        Function::new(
-            this.clone(),
-            MutFn::new(move |_: Ctx<'js>, args: Rest<Value<'js>>| {
-                let val = &args[0];
-
-                assert!(val.is_int());
-
-                let api = BJsonAPI;
-                let ty = api.bjson_value_type(val.as_int().unwrap() as _);
-
-                ty as u8
-            }),
-        ),
-    )?;
-
-    simon.set(
-        "valueStrLen",
-        Function::new(
-            this.clone(),
-            MutFn::new(move |_: Ctx<'js>, args: Rest<Value<'js>>| {
-                let val = &args[0];
-
-                assert!(val.is_int());
-
-                let api = BJsonAPI;
-                api.bjson_value_str_len(val.as_int().unwrap() as _)
-            }),
-        ),
-    )?;
-
-    simon.set(
-        "valueArrayLen",
-        Function::new(
-            this.clone(),
-            MutFn::new(move |_: Ctx<'js>, args: Rest<Value<'js>>| {
-                let val = &args[0];
-
-                assert!(val.is_int());
-
-                let api = BJsonAPI;
-                api.bjson_value_array_len(val.as_int().unwrap() as _)
-            }),
-        ),
-    )?;
-
-    simon.set(
-        "valueReadStrBytes",
-        Function::new(
-            this.clone(),
-            MutFn::new(move |_: Ctx<'js>, args: Rest<Value<'js>>| {
-                let val = &args[0];
-
-                assert!(val.is_int());
-
-                let api = BJsonAPI;
-                let val = val.as_int().unwrap();
-                let len = api.bjson_value_str_len(val as _);
-
-                let mut buffer = vec![0; len];
-                let ptr = api.bjson_value_read_str_bytes(val as _);
-                let slice = unsafe { std::slice::from_raw_parts(ptr as _, len) };
-                buffer.copy_from_slice(slice);
-
-                String::from_utf8(buffer).unwrap()
-            }),
-        ),
-    )?;
-
-    simon.set(
-        "valueBool",
-        Function::new(
-            this.clone(),
-            MutFn::new(move |cx: Ctx<'js>, args: Rest<Value<'js>>| {
-                let val = &args[0];
-
-                assert!(val.is_int());
-
-                let api = BJsonAPI;
-                let val = api.bjson_value_bool(val.as_int().unwrap() as _);
-
-                if val == 0 {
-                    Value::new_bool(cx.clone(), false)
-                } else {
-                    Value::new_bool(cx.clone(), true)
-                }
-            }),
-        ),
-    )?;
-
-    simon.set(
-        "valueInt",
-        Function::new(
-            this.clone(),
-            MutFn::new(move |_: Ctx<'js>, args: Rest<Value<'js>>| {
-                let val = &args[0];
-                let api = BJsonAPI;
-
-                assert!(val.is_int());
-
-                api.bjson_value_int(val.as_int().unwrap() as _)
-            }),
-        ),
-    )?;
-
-    simon.set(
-        "valueFloat",
-        Function::new(
-            this.clone(),
-            MutFn::new(move |_: Ctx<'js>, args: Rest<Value<'js>>| {
-                let val = &args[0];
-
-                assert!(val.is_int());
-
-                let api = BJsonAPI;
-                api.bjson_value_float(val.as_int().unwrap() as _)
+            MutFn::new(move |this: Ctx<'js>, args: Rest<Value<'js>>| {
+                write_output(hold!(this.clone(), args)).unwrap()
             }),
         ),
     )?;
