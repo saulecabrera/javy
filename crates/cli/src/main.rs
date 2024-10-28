@@ -5,13 +5,11 @@ mod js;
 mod option;
 mod wit;
 
-use crate::codegen::WitOptions;
 use crate::commands::{Cli, Command, EmitProviderCommandOpts};
 use anyhow::Result;
 use clap::Parser;
 use codegen::{CodeGenBuilder, DynamicGenerator, StaticGenerator};
 use commands::{CodegenOptionGroup, JsOptionGroup};
-use javy_config::Config;
 use js::JS;
 use std::fs;
 use std::fs::File;
@@ -23,38 +21,9 @@ fn main() -> Result<()> {
     match &args.command {
         Command::EmitProvider(opts) => emit_provider(opts),
         Command::Compile(opts) => {
-            eprintln!(
-                r#"
-                The `compile` command will be deprecated in the next major
-                release of the CLI (v4.0.0)
-
-                Refer to https://github.com/bytecodealliance/javy/issues/702 for
-                details.
-                
-                Use the `build` command instead.
-            "#
-            );
-
             let js = JS::from_file(&opts.input)?;
-            let mut builder = CodeGenBuilder::new();
-            builder
-                .wit_opts(WitOptions::from_tuple((
-                    opts.wit.clone(),
-                    opts.wit_world.clone(),
-                ))?)
-                .source_compression(!opts.no_source_compression)
-                .provider_version("2");
-
-            let config = Config::default();
-            let mut gen = if opts.dynamic {
-                builder.build::<DynamicGenerator>(config)?
-            } else {
-                builder.build::<StaticGenerator>(config)?
-            };
-
-            let wasm = gen.generate(&js)?;
-
-            fs::write(&opts.output, wasm)?;
+            let bytes = js.compile()?;
+            jacc::compile(&bytes)?;
             Ok(())
         }
         Command::Build(opts) => {
