@@ -1561,6 +1561,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "jac-translate"
+version = "7.0.1"
+dependencies = [
+ "anyhow",
+ "quickpars",
+]
+
+[[package]]
+name = "jacc"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "jac-translate",
+]
+
+[[package]]
 name = "javy"
 version = "6.0.1-alpha.1"
 dependencies = [
@@ -1952,6 +1968,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "parsetrace"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "jac-translate",
+ "leb128",
+ "quickpars",
+ "smallvec",
+]
+
+[[package]]
 name = "paste"
 version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2113,6 +2140,16 @@ dependencies = [
  "env_logger",
  "log",
  "rand",
+]
+
+[[package]]
+name = "quickpars"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "leb128",
+ "num-traits",
+ "smallvec",
 ]
 
 [[package]]
