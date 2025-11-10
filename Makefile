@@ -15,6 +15,10 @@ lint-wasi-targets:
 	--exclude=javy-plugin-processing \
 	--exclude=javy-runner \
 	--exclude=javy-fuzz \
+	--exclude=jacc \
+	--exclude=parsetrace \
+	--exclude=quickpars \
+	--exclude=jac-translate \
 	--target=wasm32-wasip2 --all-targets --all-features -- -D warnings
 
 test-wasi-targets:
@@ -24,6 +28,10 @@ test-wasi-targets:
 	--exclude=javy-plugin-processing \
 	--exclude=javy-runner \
 	--exclude=javy-fuzz \
+	--exclude=jacc \
+	--exclude=parsetrace \
+	--exclude=quickpars \
+	--exclude=jac-translate \
 	--exclude=javy-test-plugin-wasip2 \
 	--exclude=javy-test-invalid-plugin \
 	--target=wasm32-wasip2 --each-feature -- --nocapture

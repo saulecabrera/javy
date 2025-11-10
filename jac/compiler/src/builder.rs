@@ -1,6 +1,6 @@
 //! Function Builder.
 use anyhow::Result;
-use jac_translate::{FunctionTranslation, quickpars::BinaryReader};
+use jac_translate::{quickpars::BinaryReader, FunctionTranslation};
 use std::collections::{HashMap, HashSet};
 
 /// An IR builder.
@@ -11,13 +11,11 @@ pub(crate) struct FunctionBuilder<'a, 'data> {
 
 impl<'a, 'data> FunctionBuilder<'a, 'data> {
     pub fn new(translation: &'a FunctionTranslation<'data>) -> Self {
-        Self {
-            translation,
-        }
+        Self { translation }
     }
 
     pub fn build(mut self) -> Result<()> {
-	todo!()
+        todo!()
     }
 
     fn handle_operator(&mut self, _reader: &mut BinaryReader<'data>) -> Result<()> {

@@ -1,6 +1,6 @@
 use crate::builder::FunctionBuilder;
 use anyhow::Result;
-use jac_translate::{FunctionTranslation, Translation, quickpars::Opcode};
+use jac_translate::{quickpars::Opcode, FunctionTranslation, Translation};
 
 /// QuickJS-bytecode-to-Wasm compiler.
 pub(crate) struct Compiler<'data> {
@@ -11,13 +11,11 @@ pub(crate) struct Compiler<'data> {
 impl<'data> Compiler<'data> {
     /// Create a new compiler from the translated QuickJS bytecode.
     pub fn new(translation: Translation<'data>) -> Self {
-        Self {
-            translation,
-        }
+        Self { translation }
     }
 
     /// Perform compilation into Wasm bytes.
     pub fn compile(&mut self) -> Result<Vec<u8>> {
-	todo!()
+        todo!()
     }
 }

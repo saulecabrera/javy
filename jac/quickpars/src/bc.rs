@@ -1,11 +1,11 @@
 //! QuickJS bytecode details.
 
-use anyhow::{Result, bail, ensure};
+use anyhow::{bail, ensure, Result};
 
 // QuickJS manages several flavors of bytecode version, depending on what
 // features the engine is compiled with. For the time being we assume `67`, which
 // means that the engine is compiled with BIGNUM support.
-pub const VERSION: u8 = 67;
+pub const VERSION: u8 = 21;
 
 /// Bytecode tags.
 ///

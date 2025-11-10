@@ -8,6 +8,7 @@ use quickpars::{
 };
 
 pub use quickpars;
+pub mod printer;
 
 use anyhow::Result;
 
@@ -171,24 +172,25 @@ impl<'data> TranslationBuilder<'data> {
                 Payload::Header(h) => self.translation.header = h,
                 Payload::Version(_) => {}
                 Payload::ModuleHeader(h) => self.translation.module.header = h,
-                Payload::FunctionHeader(fh) => {
+                Payload::FunctionHeader((i, fh)) => {
                     self.current_func = self.translation.module.push_func(fh);
+                    debug_assert_eq!(i, self.current_func);
                 }
-                Payload::FunctionLocals(locals) => {
-                    self.translation.module.functions[self.current_func.as_u32() as usize].locals =
-                        locals;
+                Payload::FunctionLocals((i, locals)) => {
+                    debug_assert_eq!(i, self.current_func);
+                    self.translation.module.functions[i.as_u32() as usize].locals = locals;
                 }
-                Payload::FunctionDebugInfo(di) => {
-                    self.translation.module.functions[self.current_func.as_u32() as usize].debug =
-                        Some(di);
+                Payload::FunctionDebugInfo((i, di)) => {
+                    debug_assert_eq!(i, self.current_func);
+                    self.translation.module.functions[i.as_u32() as usize].debug = Some(di);
                 }
-                Payload::FunctionClosureVars(vars) => {
-                    self.translation.module.functions[self.current_func.as_u32() as usize]
-                        .closure_vars = vars;
+                Payload::FunctionClosureVars((i, vars)) => {
+                    debug_assert_eq!(i, self.current_func);
+                    self.translation.module.functions[i.as_u32() as usize].closure_vars = vars;
                 }
-                Payload::FunctionOperators(reader) => {
-                    self.translation.module.functions[self.current_func.as_u32() as usize]
-                        .operators = reader;
+                Payload::FunctionOperators((i, reader)) => {
+                    debug_assert_eq!(i, self.current_func);
+                    self.translation.module.functions[i.as_u32() as usize].operators = reader;
                 }
                 Payload::End => {}
             }

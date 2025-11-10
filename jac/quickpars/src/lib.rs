@@ -2,7 +2,7 @@
 
 use core::str;
 
-use anyhow::{Context, Result, anyhow, ensure};
+use anyhow::{anyhow, ensure, Context, Result};
 
 pub mod atom;
 pub use atom::*;
@@ -19,7 +19,7 @@ pub use sections::*;
 
 macro_rules! entity {
     ($name:ident) => {
-        #[derive(Copy, Clone, Debug)]
+        #[derive(Copy, Clone, Debug, Eq, PartialEq)]
         pub struct $name(u32);
 
         impl Default for $name {
@@ -55,11 +55,11 @@ pub enum Payload<'a> {
     Version(u8),
     Header(HeaderSection),
     ModuleHeader(ModuleSectionHeader),
-    FunctionHeader(FunctionSectionHeader),
-    FunctionLocals(Vec<FunctionLocal>),
-    FunctionClosureVars(Vec<FunctionClosureVar>),
-    FunctionDebugInfo(DebugInfo<'a>),
-    FunctionOperators(BinaryReader<'a>),
+    FunctionHeader((FuncIndex, FunctionSectionHeader)),
+    FunctionLocals((FuncIndex, Vec<FunctionLocal>)),
+    FunctionClosureVars((FuncIndex, Vec<FunctionClosureVar>)),
+    FunctionDebugInfo((FuncIndex, DebugInfo<'a>)),
+    FunctionOperators((FuncIndex, BinaryReader<'a>)),
     End,
 }
 
@@ -84,7 +84,7 @@ enum ParserState {
 }
 
 /// Metadata about the current function.
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 struct FuncMeta {
     /// The bytecode size in bytes.
     bytecode_len: u32,
@@ -101,16 +101,19 @@ struct FuncMeta {
 }
 
 /// A QuickJS bytecode parser.
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 pub struct Parser {
     /// The state of the parser.
     state: ParserState,
     /// The current position of the parser.
     offset: usize,
+    /// The function definition depth, relative
+    /// to the size of the constant pool.
+    depth: u32,
     /// Is the parser done.
     done: bool,
-    /// Metadata about the current function.
-    meta: Option<FuncMeta>,
+    /// Metadata stack about the current function.
+    meta: Vec<FuncMeta>,
 }
 
 impl Parser {
@@ -120,7 +123,8 @@ impl Parser {
             state: ParserState::Version,
             offset: 0,
             done: false,
-            meta: None,
+            meta: vec![],
+            depth: 0,
         }
     }
 }
@@ -135,6 +139,12 @@ impl Parser {
             }
             Some(parser.parse(data))
         })
+    }
+
+    /// Get the current depth of the parsing state,
+    /// which maps to the number of functions.
+    fn depth(&self) -> u32 {
+        u32::try_from(self.meta.len() - 1).unwrap()
     }
 
     /// Intermeidate parsing helper.
@@ -227,7 +237,7 @@ impl Parser {
                 let local_count = reader.read_leb128()?;
                 let debug = flag::<bool>(flags as u32, 9);
 
-                self.meta = Some(FuncMeta {
+                self.meta.push(FuncMeta {
                     local_count,
                     bytecode_len,
                     debug: debug != 0,
@@ -237,18 +247,21 @@ impl Parser {
 
                 self.state = ParserState::FunctionLocals;
 
-                return Ok(Payload::FunctionHeader(FunctionSectionHeader {
-                    flags,
-                    name_index: AtomIndex::from_u32(name_index),
-                    arg_count,
-                    var_count,
-                    defined_arg_count,
-                    stack_size,
-                    closure_var_count,
-                    constant_pool_size,
-                    bytecode_len,
-                    local_count,
-                }));
+                Ok(Payload::FunctionHeader((
+                    FuncIndex::from_u32(self.depth),
+                    FunctionSectionHeader {
+                        flags,
+                        name_index: AtomIndex::from_u32(name_index),
+                        arg_count,
+                        var_count,
+                        defined_arg_count,
+                        stack_size,
+                        closure_var_count,
+                        constant_pool_size,
+                        bytecode_len,
+                        local_count,
+                    },
+                )))
             }
             x => Err(anyhow!("Unsupported {x:?}")),
         };
@@ -268,11 +281,11 @@ impl Parser {
             "Incorrect parser state, expected `FunctionLocals`"
         );
         ensure!(
-            self.meta.is_some(),
+            self.meta.len() > 0,
             "Expected function metadata in parser when parsing locals"
         );
 
-        let local_count = self.meta.as_ref().unwrap().local_count;
+        let local_count = self.meta.last().as_ref().unwrap().local_count;
         let mut locals = vec![];
         for _ in 0..local_count {
             locals.push(FunctionLocal {
@@ -285,7 +298,10 @@ impl Parser {
 
         self.state = ParserState::FunctionClosureVars;
 
-        Ok(Payload::FunctionLocals(locals))
+        Ok(Payload::FunctionLocals((
+            FuncIndex::from_u32(self.depth()),
+            locals,
+        )))
     }
 
     fn parse_closure_var_section<'a: 'b, 'b>(
@@ -297,11 +313,11 @@ impl Parser {
             "Incorrect parser state, expected `FunctionClosureVars`"
         );
         ensure!(
-            self.meta.is_some(),
+            self.meta.len() > 0,
             "Expected function metadata in parser when parsing locals"
         );
 
-        let closure_var_count = self.meta.as_ref().unwrap().closure_var_count;
+        let closure_var_count = self.meta.last().as_ref().unwrap().closure_var_count;
         let mut closure_vars = vec![];
         for _ in 0..closure_var_count {
             closure_vars.push(FunctionClosureVar {
@@ -311,8 +327,17 @@ impl Parser {
             });
         }
 
-        self.state = ParserState::FunctionOperators;
-        Ok(Payload::FunctionClosureVars(closure_vars))
+        let result = Ok(Payload::FunctionClosureVars((
+            FuncIndex::from_u32(self.depth()),
+            closure_vars,
+        )));
+        if self.meta.last().as_ref().unwrap().constant_pool_size > 0 {
+            self.state = ParserState::Tags;
+        } else {
+            self.state = ParserState::FunctionOperators;
+        }
+
+        result
     }
 
     fn parse_operators_section<'a: 'b, 'b>(
@@ -320,22 +345,31 @@ impl Parser {
         reader: &'b mut BinaryReader<'a>,
     ) -> Result<Payload<'a>> {
         ensure!(
-            self.meta.is_some(),
+            self.meta.len() > 0,
             format!(
                 "Expected parser meta to be present with {:?}",
                 ParserState::FunctionOperators
             ),
         );
 
-        if self.meta.as_ref().unwrap().debug {
+        let len = self.meta.last().as_ref().unwrap().bytecode_len as usize;
+        let p = Ok(Payload::FunctionOperators((
+            FuncIndex::from_u32(self.depth()),
+            slice(reader, len)?,
+        )));
+
+        if self.meta.last().as_ref().unwrap().debug {
             self.state = ParserState::Debug;
         } else {
-            self.state = ParserState::Tags;
+            self.meta.pop();
+            if self.meta.is_empty() {
+                self.state = ParserState::End;
+            } else {
+                self.state = ParserState::FunctionOperators;
+            }
         }
 
-        let len = self.meta.as_ref().unwrap().bytecode_len as usize;
-        let p = Payload::FunctionOperators(slice(reader, len)?);
-        Ok(p)
+        p
     }
 
     /// Parse a function's debug section.
@@ -353,20 +387,36 @@ impl Parser {
         );
         let filename = reader.read_atom()?;
         let lineno = reader.read_leb128()?;
-        let line_debug_len = reader.read_leb128()?;
-        let line_buffer = slice(reader, line_debug_len as usize)?;
-
         let colno = reader.read_leb128()?;
-        let col_debug_len = reader.read_leb128()?;
-        let col_buffer = slice(reader, col_debug_len as usize)?;
-        self.state = ParserState::Tags;
-        Ok(Payload::FunctionDebugInfo(DebugInfo::new(
-            filename,
-            lineno,
-            colno,
-            line_buffer,
-            col_buffer,
-        )))
+        let pc2line_len = reader.read_leb128()?;
+
+        let pc2line_reader = if pc2line_len > 0 {
+            Some(slice(reader, pc2line_len as usize)?)
+        } else {
+            None
+        };
+
+        let source_len = reader.read_leb128()?;
+
+        let source_reader = if source_len > 0 {
+            Some(slice(reader, source_len as usize)?)
+        } else {
+            None
+        };
+
+        let result = Ok(Payload::FunctionDebugInfo((
+            FuncIndex::from_u32(self.depth),
+            DebugInfo::new(filename, lineno, colno, pc2line_reader, source_reader),
+        )));
+
+        self.meta.pop();
+        if self.meta.is_empty() {
+            self.state = ParserState::End;
+        } else {
+            self.state = ParserState::FunctionOperators;
+        }
+
+        result
     }
 
     /// Parses the bytecode header.
@@ -388,7 +438,12 @@ impl Parser {
             .map(str::to_string)
             .collect::<Vec<_>>();
         for _ in 0..atom_count {
-            atoms.push(str::from_utf8(read_str_bytes(reader)?)?.to_string());
+            let ty = reader.read_u8()?;
+            if ty == 0 {
+                let _ = reader.read_u32()?;
+            } else {
+                atoms.push(str::from_utf8(read_str_bytes(reader)?)?.to_string());
+            }
         }
 
         self.state = ParserState::Tags;
@@ -403,7 +458,7 @@ impl Parser {
     ) -> Result<Payload<'a>> {
         // The entity of the atom array containing the module name.
         let name_entity = reader.read_atom()?;
-        self.meta = None;
+        self.meta = vec![];
 
         let mut req_modules = vec![];
         let mut exports = vec![];
