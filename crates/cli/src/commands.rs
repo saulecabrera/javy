@@ -36,6 +36,9 @@ pub enum Command {
     /// Generates WebAssembly from a JavaScript source.
     #[command(arg_required_else_help = true)]
     Build(BuildCommandOpts),
+    /// Compiles JavaScript source to WebAssembly ahead-of-time.
+    #[command(arg_required_else_help = true)]
+    Compile(CompileCommandOpts),
     /// Emits the plugin binary that is required to run dynamically
     /// linked WebAssembly modules.
     EmitPlugin(EmitPluginCommandOpts),
@@ -66,6 +69,21 @@ pub struct BuildCommandOpts {
     /// JavaScript runtime options.
     /// Use `-J help` for more details.
     pub js: Vec<JsGroupValue>,
+}
+
+#[derive(Debug, Parser)]
+pub struct CompileCommandOpts {
+    #[arg(value_name = "INPUT", required = true)]
+    /// Path of the JavaScript input file.
+    pub input: PathBuf,
+
+    #[arg(short, default_value = "index.wasm")]
+    /// Desired path of the WebAssembly output file.
+    pub output: PathBuf,
+
+    #[arg(short = 'p', long = "print-bytecode")]
+    /// Print JS bytecode.
+    pub print_bytecode: bool,
 }
 
 #[derive(Debug, Parser)]

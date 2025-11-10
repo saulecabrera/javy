@@ -20,6 +20,7 @@ serde = { workspace = true, default-features = false }
 serde_json = { workspace = true }
 javy-codegen = { path = "../codegen/", features = ["plugin_internal"] }
 javy-plugin-processing = { path = "../plugin-processing" }
+wasm-opt = { workspace = true }
 
 [dev-dependencies]
 brotli = { workspace = true }

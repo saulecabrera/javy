@@ -441,6 +441,14 @@ impl Generator {
         }
     }
 
+    /// Compile the JavaScript source into QuickJS bytecode
+    /// and parse the QuickJS bytecode into a human readable
+    /// representation.
+    pub fn inspect_bytecode(&self, js: &js::JS) -> Result<String> {
+        let bc = bytecode::compile_source(&self.plugin, js.as_bytes())?;
+        jac_translate::printer::print(&bc)
+    }
+
     /// Generate a Wasm module which will run the provided JS source code.
     pub fn generate(&mut self, js: &js::JS) -> Result<Vec<u8>> {
         if self.wit_opts.defined() {

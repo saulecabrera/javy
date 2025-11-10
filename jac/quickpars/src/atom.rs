@@ -1,9 +1,10 @@
 // Built-in atom definitions in the quickjs engine.
 // See https://github.com/bellard/quickjs/blob/36911f0d3ab1a4c190a4d5cbe7c2db225a455389/quickjs-atom.h
 // and https://github.com/DelSkayn/rquickjs/blob/master/sys/patches/error_column_number.patch#L54
-pub const ATOM_NAMES: [&str; 228] = [
+pub const ATOM_NAMES: [&str; 227] = [
     "JS_ATOM_NULL", // default name for lambda functions
-    "null",
+    // Note: first atoms are considered as keywords in the parser
+    "null", // must be first
     "false",
     "true",
     "if",
@@ -32,6 +33,7 @@ pub const ATOM_NAMES: [&str; 228] = [
     "function",
     "debugger",
     "with",
+    // FutureReservedWord
     "class",
     "const",
     "enum",
@@ -39,6 +41,7 @@ pub const ATOM_NAMES: [&str; 228] = [
     "extends",
     "import",
     "super",
+    // FutureReservedWords when parsing strict mode code
     "implements",
     "interface",
     "let",
@@ -49,11 +52,12 @@ pub const ATOM_NAMES: [&str; 228] = [
     "static",
     "yield",
     "await",
+    // empty string
     "",
+    // identifiers
+    "keys",
+    "size",
     "length",
-    "fileName",
-    "lineNumber",
-    "columnNumber",
     "message",
     "cause",
     "errors",
@@ -121,12 +125,13 @@ pub const ATOM_NAMES: [&str; 228] = [
     "this.active_func",
     "<home_object>",
     "<computed_field>",
-    "<static_computed_field>",
+    "<static_computed_field>", // must come after computed_fields
     "<class_fields_init>",
     "<brand>",
     "#constructor",
     "as",
     "from",
+    "fromAsync",
     "meta",
     "*default*",
     "*",
@@ -145,15 +150,12 @@ pub const ATOM_NAMES: [&str; 228] = [
     "reason",
     "globalThis",
     "bigint",
-    "bigfloat",
-    "bigdecimal",
-    "roundingMode",
-    "maximumSignificantDigits",
-    "maximumFractionDigits",
     "not-equal",
     "timed-out",
     "ok",
     "toJSON",
+    "maxByteLength",
+    // class names
     "Object",
     "Array",
     "Error",
@@ -171,6 +173,7 @@ pub const ATOM_NAMES: [&str; 228] = [
     "RegExp",
     "ArrayBuffer",
     "SharedArrayBuffer",
+    // must keep same order as class IDs for typed arrays
     "Uint8ClampedArray",
     "Int8Array",
     "Uint8Array",
@@ -180,19 +183,21 @@ pub const ATOM_NAMES: [&str; 228] = [
     "Uint32Array",
     "BigInt64Array",
     "BigUint64Array",
+    "Float16Array",
     "Float32Array",
     "Float64Array",
     "DataView",
     "BigInt",
-    "BigFloat",
-    "BigFloatEnv",
-    "BigDecimal",
-    "OperatorSet",
-    "Operators",
+    "WeakRef",
+    "FinalizationRegistry",
     "Map",
-    "Set",
-    "WeakMap",
-    "WeakSet",
+    "Set",     // Map + 1
+    "WeakMap", // Map + 2
+    "WeakSet", // Map + 3
+    "Iterator",
+    "IteratorConcat",
+    "IteratorHelper",
+    "IteratorWrap",
     "Map Iterator",
     "Set Iterator",
     "Array Iterator",
@@ -215,7 +220,11 @@ pub const ATOM_NAMES: [&str; 228] = [
     "TypeError",
     "URIError",
     "InternalError",
+    "DOMException",
+    "CallSite",
+    // private symbols
     "<brand>",
+    // symbols
     "Symbol.toPrimitive",
     "Symbol.iterator",
     "Symbol.match",
@@ -229,5 +238,4 @@ pub const ATOM_NAMES: [&str; 228] = [
     "Symbol.species",
     "Symbol.unscopables",
     "Symbol.asyncIterator",
-    "Symbol.operatorSet",
 ];

@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use anyhow::{Error, Result, bail};
+use anyhow::{bail, Error, Result};
 
 /// Represents a single trace event profiled during the execution of the quickjs engine as a wasm module.
 /// The profiler captures source level bytecode execution events and fuel consumption.

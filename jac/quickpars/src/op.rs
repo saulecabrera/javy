@@ -1,6 +1,6 @@
 use crate::readers::BinaryReader;
 use crate::{AtomIndex, ClosureVarIndex, ConstantPoolIndex, LocalIndex};
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 
 /// A QuickJS operator code.
 #[repr(u8)]
@@ -111,6 +111,7 @@ pub enum Opcode {
     ReturnUndef,
     CheckCtorReturn,
     CheckCtor,
+    InitCtor,
     CheckBrand,
     AddBrand,
     ReturnAsync,
@@ -251,9 +252,6 @@ pub enum Opcode {
     PutLocCheckInit {
         index: LocalIndex,
     },
-    GetLocCheckThis {
-        index: LocalIndex,
-    },
     GetVarRefCheck {
         index: ClosureVarIndex,
     },
@@ -378,10 +376,13 @@ pub enum Opcode {
     Mod,
     Add,
     Sub,
-    Pow,
     Shl,
     Sar,
     Shr,
+    And,
+    Xor,
+    Or,
+    Pow,
     Lt,
     Lte,
     Gt,
@@ -392,13 +393,11 @@ pub enum Opcode {
     Neq,
     StrictEq,
     StrictNeq,
-    And,
-    Xor,
-    Or,
     UndefOrNull,
     PrivateIn,
-    MulPow10,
-    MathMod,
+    PushBigintI32 {
+        value: i32,
+    },
     // Short opcodes.
     Nop,
     PushMinus1,
@@ -432,6 +431,7 @@ pub enum Opcode {
     SetLoc8 {
         index: LocalIndex,
     },
+    GetLoc0Loc1,
     GetLoc0,
     GetLoc1,
     GetLoc2,
@@ -572,148 +572,146 @@ impl Opcode {
             41 => ReturnUndef,
             42 => CheckCtorReturn,
             43 => CheckCtor,
-            44 => CheckBrand,
-            45 => AddBrand,
-            46 => ReturnAsync,
-            47 => Throw,
-            48 => {
+            44 => InitCtor,
+            45 => CheckBrand,
+            46 => AddBrand,
+            47 => ReturnAsync,
+            48 => Throw,
+            49 => {
                 let atom = AtomIndex::from_u32(reader.read_u32()?);
                 let ty = reader.read_u8()?;
                 ThrowError { atom, ty }
             }
-            49 => {
+            50 => {
                 let argc = reader.read_u16()?;
                 let scope = reader.read_u16()? - 1;
                 Eval { scope, argc }
             }
-            50 => ApplyEval {
+            51 => ApplyEval {
                 scope: reader.read_u16()? - 1,
             },
-            51 => Regexp,
-            52 => GetSuper,
-            53 => Import,
-            54 => CheckVar {
+            52 => Regexp,
+            53 => GetSuper,
+            54 => Import,
+            55 => CheckVar {
                 atom: AtomIndex::from_u32(reader.read_u32()?),
             },
-            55 => GetVarUndef {
+            56 => GetVarUndef {
                 atom: AtomIndex::from_u32(reader.read_u32()?),
             },
-            56 => GetVar {
+            57 => GetVar {
                 atom: AtomIndex::from_u32(reader.read_u32()?),
             },
-            57 => PutVar {
+            58 => PutVar {
                 atom: AtomIndex::from_u32(reader.read_u32()?),
             },
-            58 => PutVarInit {
+            59 => PutVarInit {
                 atom: AtomIndex::from_u32(reader.read_u32()?),
             },
-            59 => PutVarStrict {
+            60 => PutVarStrict {
                 atom: AtomIndex::from_u32(reader.read_u32()?),
             },
-            60 => GetRefValue,
-            61 => PutRefValue,
-            62 | 63 => {
+            61 => GetRefValue,
+            62 => PutRefValue,
+            63 | 64 => {
                 let atom = AtomIndex::from_u32(reader.read_u32()?);
                 let flags = reader.read_u8()?;
-                if byte == 62 {
+                if byte == 63 {
                     DefineVar { flags, atom }
                 } else {
                     CheckDefineVar { flags, atom }
                 }
             }
-            64 => {
+            65 => {
                 let atom = AtomIndex::from_u32(reader.read_u32()?);
                 let flags = reader.read_u8()?;
                 DefineFunc { flags, atom }
             }
-            65 => GetField {
+            66 => GetField {
                 atom: AtomIndex::from_u32(reader.read_u32()?),
             },
-            66 => GetField2 {
+            67 => GetField2 {
                 atom: AtomIndex::from_u32(reader.read_u32()?),
             },
-            67 => PutField {
+            68 => PutField {
                 atom: AtomIndex::from_u32(reader.read_u32()?),
             },
-            68 => GetPrivateField,
-            69 => PutPrivateField,
-            70 => DefinePrivateField,
-            71 => GetArrayEl,
-            72 => GetArrayEl2,
-            73 => PutArrayEl,
-            74 => GetSuperValue,
-            75 => PutSuperValue,
-            76 => DefineField {
+            69 => GetPrivateField,
+            70 => PutPrivateField,
+            71 => DefinePrivateField,
+            72 => GetArrayEl,
+            73 => GetArrayEl2,
+            74 => PutArrayEl,
+            75 => GetSuperValue,
+            76 => PutSuperValue,
+            77 => DefineField {
                 atom: AtomIndex::from_u32(reader.read_u32()?),
             },
-            77 => SetName {
+            78 => SetName {
                 atom: AtomIndex::from_u32(reader.read_u32()?),
             },
-            78 => SetNameComputed,
-            79 => SetProto,
-            80 => SetHomeObject,
-            81 => DefineArrayEl,
-            82 => Append,
-            83 => CopyDataProperties {
+            79 => SetNameComputed,
+            80 => SetProto,
+            81 => SetHomeObject,
+            82 => DefineArrayEl,
+            83 => Append,
+            84 => CopyDataProperties {
                 mask: reader.read_u8()?,
             },
-            84 => {
+            85 => {
                 let atom = AtomIndex::from_u32(reader.read_u32()?);
                 let flags = reader.read_u8()?;
                 DefineMethod { atom, flags }
             }
-            85 => DefineMethodComputed {
+            86 => DefineMethodComputed {
                 flags: reader.read_u8()?,
             },
-            86 | 87 => {
+            87 | 88 => {
                 let atom = AtomIndex::from_u32(reader.read_u32()?);
                 let flags = reader.read_u8()?;
-                if byte == 86 {
+                if byte == 87 {
                     DefineClass { atom, flags }
                 } else {
                     DefineClassComputed { atom, flags }
                 }
             }
-            88 => GetLoc {
+            89 => GetLoc {
                 index: LocalIndex::from_u32(reader.read_u16()? as u32),
             },
-            89 => PutLoc {
+            90 => PutLoc {
                 index: LocalIndex::from_u32(reader.read_u16()? as u32),
             },
-            90 => SetLoc {
+            91 => SetLoc {
                 index: LocalIndex::from_u32(reader.read_u16()? as u32),
             },
-            91 => GetArg {
+            92 => GetArg {
                 index: LocalIndex::from_u32(reader.read_u16()? as u32),
             },
-            92 => PutArg {
+            93 => PutArg {
                 index: LocalIndex::from_u32(reader.read_u16()? as u32),
             },
-            93 => SetArg {
+            94 => SetArg {
                 index: LocalIndex::from_u32(reader.read_u16()? as u32),
             },
-            94 => GetVarRef {
+            95 => GetVarRef {
                 index: ClosureVarIndex::from_u32(reader.read_u16()? as u32),
             },
-            95 => PutVarRef {
+            96 => PutVarRef {
                 index: ClosureVarIndex::from_u32(reader.read_u16()? as u32),
             },
-            96 => SetVarRef {
+            97 => SetVarRef {
                 index: ClosureVarIndex::from_u32(reader.read_u16()? as u32),
             },
-            97 => SetLocUninit {
+            98 => SetLocUninit {
                 index: LocalIndex::from_u32(reader.read_u16()? as u32),
             },
-            98 => GetLocCheck {
+            99 => GetLocCheck {
                 index: LocalIndex::from_u32(reader.read_u16()? as u32),
             },
-            99 => PutLocCheck {
+            100 => PutLocCheck {
                 index: LocalIndex::from_u32(reader.read_u16()? as u32),
             },
-            100 => PutLocCheckInit {
-                index: LocalIndex::from_u32(reader.read_u16()? as u32),
-            },
-            101 => GetLocCheckThis {
+            101 => PutLocCheckInit {
                 index: LocalIndex::from_u32(reader.read_u16()? as u32),
             },
             102 => GetVarRefCheck {
@@ -866,59 +864,61 @@ impl Opcode {
             157 => Mod,
             158 => Add,
             159 => Sub,
-            160 => Pow,
-            161 => Shl,
-            162 => Sar,
-            163 => Shr,
-            164 => Lt,
-            165 => Lte,
-            166 => Gt,
-            167 => Gte,
-            168 => InstanceOf,
-            169 => In,
-            170 => Eq,
-            171 => Neq,
-            172 => StrictEq,
-            173 => StrictNeq,
-            174 => And,
-            175 => Xor,
-            176 => Or,
+            160 => Shl,
+            161 => Sar,
+            162 => Shr,
+            163 => And,
+            164 => Xor,
+            165 => Or,
+            166 => Pow,
+            167 => Lt,
+            168 => Lte,
+            169 => Gt,
+            170 => Gte,
+            171 => InstanceOf,
+            172 => In,
+            173 => Eq,
+            174 => Neq,
+            175 => StrictEq,
+            176 => StrictNeq,
             177 => UndefOrNull,
             178 => PrivateIn,
-            179 => MulPow10,
-            180 => MathMod,
-            181 => Nop,
-            182 => PushMinus1,
-            183 => Push0,
-            184 => Push1,
-            185 => Push2,
-            186 => Push3,
-            187 => Push4,
-            188 => Push5,
-            189 => Push6,
-            190 => Push7,
-            191 => PushI8 {
+            179 => PushBigintI32 {
+                value: i32::try_from(reader.read_u32()?)?,
+            },
+            180 => Nop,
+            181 => PushMinus1,
+            182 => Push0,
+            183 => Push1,
+            184 => Push2,
+            185 => Push3,
+            186 => Push4,
+            187 => Push5,
+            188 => Push6,
+            189 => Push7,
+            190 => PushI8 {
                 val: reader.read_u8()? as i8,
             },
-            192 => PushI16 {
+            191 => PushI16 {
                 val: reader.read_u16()? as i16,
             },
-            193 => PushConst8 {
+            192 => PushConst8 {
                 index: reader.read_u8()?,
             },
-            194 => FClosure8 {
+            193 => FClosure8 {
                 index: ConstantPoolIndex::from_u32(reader.read_u8()? as u32),
             },
-            195 => PushEmptyString,
-            196 => GetLoc8 {
+            194 => PushEmptyString,
+            195 => GetLoc8 {
                 index: LocalIndex::from_u32(reader.read_u8()? as u32),
             },
-            197 => PutLoc8 {
+            196 => PutLoc8 {
                 index: LocalIndex::from_u32(reader.read_u8()? as u32),
             },
-            198 => SetLoc8 {
+            197 => SetLoc8 {
                 index: LocalIndex::from_u32(reader.read_u8()? as u32),
             },
+            198 => GetLoc0Loc1,
             199 => GetLoc0,
             200 => GetLoc1,
             201 => GetLoc2,
@@ -1044,64 +1044,64 @@ impl Opcode {
             41 => "ReturnUndef",
             42 => "CheckCtorReturn",
             43 => "CheckCtor",
-            44 => "CheckBrand",
-            45 => "AddBrand",
-            46 => "ReturnAsync",
-            47 => "Throw",
-            48 => "ThrowError",
-            49 => "Eval",
-            50 => "ApplyEval",
-            51 => "Regexp",
-            52 => "GetSuper",
-            53 => "Import",
-            54 => "CheckVar",
-            55 => "GetVarUndef",
-            56 => "GetVar",
-            57 => "PutVar",
-            58 => "PutVarInit",
-            59 => "PutVarStrict",
-            60 => "GetRefValue",
-            61 => "PutRefValue",
-            62 => "DefineVar",
-            63 => "CheckDefineVar",
-            64 => "DefineFunc",
-            65 => "GetField",
-            66 => "GetField2",
-            67 => "PutField",
-            68 => "GetPrivateField",
-            69 => "PutPrivateField",
-            70 => "DefinePrivateField",
-            71 => "GetArrayEl",
-            72 => "GetArrayEl2",
-            73 => "PutArrayEl",
-            74 => "GetSuperValue",
-            75 => "PutSuperValue",
-            76 => "DefineField",
-            77 => "SetName",
-            78 => "SetNameComputed",
-            79 => "SetProto",
-            80 => "SetHomeObject",
-            81 => "DefineArrayEl",
-            82 => "Append",
-            83 => "CopyDataProperties",
-            84 => "DefineMethod",
-            85 => "DefineMethodComputed",
-            86 => "DefineClass",
-            87 => "DefineClassComputed",
-            88 => "GetLoc",
-            89 => "PutLoc",
-            90 => "SetLoc",
-            91 => "GetArg",
-            92 => "PutArg",
-            93 => "SetArg",
-            94 => "GetVarRef",
-            95 => "PutVarRef",
-            96 => "SetVarRef",
-            97 => "SetLocUninit",
-            98 => "GetLocCheck",
-            99 => "PutLocCheck",
-            100 => "PutLocCheckInit",
-            101 => "GetLocCheckThis",
+            44 => "InitCtor",
+            45 => "CheckBrand",
+            46 => "AddBrand",
+            47 => "ReturnAsync",
+            48 => "Throw",
+            49 => "ThrowError",
+            50 => "Eval",
+            51 => "ApplyEval",
+            52 => "Regexp",
+            53 => "GetSuper",
+            54 => "Import",
+            55 => "CheckVar",
+            56 => "GetVarUndef",
+            57 => "GetVar",
+            58 => "PutVar",
+            59 => "PutVarInit",
+            60 => "PutVarStrict",
+            61 => "GetRefValue",
+            62 => "PutRefValue",
+            63 => "DefineVar",
+            64 => "CheckDefineVar",
+            65 => "DefineFunc",
+            66 => "GetField",
+            67 => "GetField2",
+            68 => "PutField",
+            69 => "GetPrivateField",
+            70 => "PutPrivateField",
+            71 => "DefinePrivateField",
+            72 => "GetArrayEl",
+            73 => "GetArrayEl2",
+            74 => "PutArrayEl",
+            75 => "GetSuperValue",
+            76 => "PutSuperValue",
+            77 => "DefineField",
+            78 => "SetName",
+            79 => "SetNameComputed",
+            80 => "SetProto",
+            81 => "SetHomeObject",
+            82 => "DefineArrayEl",
+            83 => "Append",
+            84 => "CopyDataProperties",
+            85 => "DefineMethod",
+            86 => "DefineMethodComputed",
+            87 => "DefineClass",
+            88 => "DefineClassComputed",
+            89 => "GetLoc",
+            90 => "PutLoc",
+            91 => "SetLoc",
+            92 => "GetArg",
+            93 => "PutArg",
+            94 => "SetArg",
+            95 => "GetVarRef",
+            96 => "PutVarRef",
+            97 => "SetVarRef",
+            98 => "SetLocUninit",
+            99 => "GetLocCheck",
+            100 => "PutLocCheck",
+            101 => "PutLocCheckInit",
             102 => "GetVarRefCheck",
             103 => "PutVarRefCheck",
             104 => "PutVarRefCheckInit",
@@ -1160,45 +1160,45 @@ impl Opcode {
             157 => "Mod",
             158 => "Add",
             159 => "Sub",
-            160 => "Pow",
-            161 => "Shl",
-            162 => "Sar",
-            163 => "Shr",
-            164 => "Lt",
-            165 => "Lte",
-            166 => "Gt",
-            167 => "Gte",
-            168 => "InstanceOf",
-            169 => "In",
-            170 => "Eq",
-            171 => "Neq",
-            172 => "StrictEq",
-            173 => "StrictNeq",
-            174 => "And",
-            175 => "Xor",
-            176 => "Or",
+            160 => "Shl",
+            161 => "Sar",
+            162 => "Shr",
+            163 => "And",
+            164 => "Xor",
+            165 => "Or",
+            166 => "Pow",
+            167 => "Lt",
+            168 => "Lte",
+            169 => "Gt",
+            170 => "Gte",
+            171 => "InstanceOf",
+            172 => "In",
+            173 => "Eq",
+            174 => "Neq",
+            175 => "StrictEq",
+            176 => "StrictNeq",
             177 => "UndefOrNull",
             178 => "PrivateIn",
-            179 => "MulPow10",
-            180 => "MathMod",
-            181 => "Nop",
-            182 => "PushMinus1",
-            183 => "Push0",
-            184 => "Push1",
-            185 => "Push2",
-            186 => "Push3",
-            187 => "Push4",
-            188 => "Push5",
-            189 => "Push6",
-            190 => "Push7",
-            191 => "PushI8",
-            192 => "PushI16",
-            193 => "PushConst8",
-            194 => "FClosure8",
-            195 => "PushEmptyString",
-            196 => "GetLoc8",
-            197 => "PutLoc8",
-            198 => "SetLoc8",
+            179 => "PushBigintI32",
+            180 => "Nop",
+            181 => "PushMinus1",
+            182 => "Push0",
+            183 => "Push1",
+            184 => "Push2",
+            185 => "Push3",
+            186 => "Push4",
+            187 => "Push5",
+            188 => "Push6",
+            189 => "Push7",
+            190 => "PushI8",
+            191 => "PushI16",
+            192 => "PushConst8",
+            193 => "FClosure8",
+            194 => "PushEmptyString",
+            195 => "GetLoc8",
+            196 => "PutLoc8",
+            197 => "SetLoc8",
+            198 => "GetLoc0Loc1",
             199 => "GetLoc0",
             200 => "GetLoc1",
             201 => "GetLoc2",

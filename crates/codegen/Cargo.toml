@@ -29,6 +29,7 @@ convert_case = "0.8.0"
 wasm-opt = { workspace = true }
 tempfile = { workspace = true }
 wasmparser = { workspace = true }
+jac-translate = { path = "../../jac/translate" }
 
 [dev-dependencies]
 insta = "1.43.2"

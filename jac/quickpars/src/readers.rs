@@ -1,6 +1,6 @@
 //! Bytecode reader.
 
-use anyhow::{Result, ensure};
+use anyhow::{ensure, Result};
 use std::io::Cursor;
 
 /// A general binary reader.
@@ -74,7 +74,7 @@ impl<'a> BinaryReader<'a> {
         Ok(self.read_leb128()? >> 1)
     }
 
-    /// Reads an integer in LEB-128 format.
+    /// Reads an unsigned integer in LEB-128 format.
     pub fn read_leb128(&mut self) -> Result<u32> {
         let mut cursor = Cursor::new(&self.data[self.offset..]);
         let val = leb128::read::unsigned(&mut cursor)?;

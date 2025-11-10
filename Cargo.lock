@@ -1621,6 +1621,7 @@ dependencies = [
  "brotli",
  "convert_case",
  "insta",
+ "jac-translate",
  "swc_core",
  "tempfile",
  "walrus",

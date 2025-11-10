@@ -72,6 +72,18 @@ fn main() -> Result<()> {
             out.write_all(&initialized_plugin_bytes)?;
             Ok(())
         }
+        Command::Compile(opts) => {
+            let js = JS::from_file(&opts.input)?;
+            let default_plugin =
+                CliPlugin::new(Plugin::new(PLUGIN_MODULE.into())?, PluginKind::Default);
+            let generator = Generator::new(default_plugin.into_plugin());
+
+            if opts.print_bytecode {
+                println!("{}", generator.inspect_bytecode(&js)?);
+            }
+
+            Ok(())
+        }
     }
 }
 

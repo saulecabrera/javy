@@ -148,8 +148,8 @@ pub struct DebugInfo<'a> {
     pub filename: u32,
     pub lineno: u32,
     pub colno: u32,
-    pub line_debug_reader: BinaryReader<'a>,
-    pub col_debug_reader: BinaryReader<'a>,
+    pub pc2line_reader: Option<BinaryReader<'a>>,
+    pub source_reader: Option<BinaryReader<'a>>,
 }
 
 impl<'a> DebugInfo<'a> {
@@ -158,15 +158,15 @@ impl<'a> DebugInfo<'a> {
         filename: u32,
         lineno: u32,
         colno: u32,
-        line_debug_reader: BinaryReader<'a>,
-        col_debug_reader: BinaryReader<'a>,
+        pc2line_reader: Option<BinaryReader<'a>>,
+        source_reader: Option<BinaryReader<'a>>,
     ) -> Self {
         Self {
             filename,
             lineno,
             colno,
-            line_debug_reader,
-            col_debug_reader,
+            pc2line_reader,
+            source_reader,
         }
     }
 }
