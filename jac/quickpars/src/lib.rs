@@ -235,7 +235,7 @@ impl Parser {
                 let constant_pool_size = reader.read_leb128()?;
                 let bytecode_len = reader.read_leb128()?;
                 let local_count = reader.read_leb128()?;
-                let debug = flag::<bool>(flags as u32, 9);
+                let debug = flag(flags as u32, 9, 1);
 
                 self.meta.push(FuncMeta {
                     local_count,
@@ -320,10 +320,24 @@ impl Parser {
         let closure_var_count = self.meta.last().as_ref().unwrap().closure_var_count;
         let mut closure_vars = vec![];
         for _ in 0..closure_var_count {
+            let name_index = AtomIndex::from_u32(reader.read_atom()?);
+            let index = reader.read_leb128()?;
+            let flags = reader.read_u8()?;
+
+            let is_local = bc::flag(flags as u32, 0, 1);
+            let is_arg = bc::flag(flags as u32, 1, 1);
+            let is_const = bc::flag(flags as u32, 2, 1);
+            let is_lexical = bc::flag(flags as u32, 3, 1);
+            let var_kind = bc::flag(flags as u32, 4, 4);
+
             closure_vars.push(FunctionClosureVar {
-                name_index: AtomIndex::from_u32(reader.read_atom()?),
-                index: reader.read_leb128()?,
-                flags: reader.read_u8()?,
+                name_index,
+                index,
+                is_local: is_local != 0,
+                is_arg: is_arg != 0,
+                is_const: is_const != 0,
+                is_lexical: is_lexical != 0,
+                var_kind: u8::try_from(var_kind).unwrap(),
             });
         }
 

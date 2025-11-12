@@ -131,7 +131,11 @@ pub struct FunctionSectionHeader {
 pub struct FunctionClosureVar {
     pub name_index: AtomIndex,
     pub index: u32,
-    pub flags: u8,
+    pub is_local: bool,
+    pub is_arg: bool,
+    pub is_const: bool,
+    pub is_lexical: bool,
+    pub var_kind: u8,
 }
 
 /// Function local variable information.
