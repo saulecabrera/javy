@@ -47,13 +47,7 @@ impl Tag {
 }
 
 /// Extract the flag at the given index of the bitset.
-///
-/// #Safety
-///
-/// `T` should only be a primitive type.
-/// TODO: Find a way to restrict this.
-pub(crate) fn flag<T>(flags: u32, index: u32) -> u32 {
-    let size = std::mem::size_of::<T>();
+pub(crate) fn flag(flags: u32, index: u32, size: u32) -> u32 {
     (flags >> index) & ((1u32 << size) - 1)
 }
 
