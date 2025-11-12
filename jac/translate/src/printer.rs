@@ -65,8 +65,49 @@ impl Printer {
         write!(&mut self.writer, "func: {}", func_name).map_err(|e| anyhow!("{}", e))?;
         self.nl()?;
 
-        let mut reader = func.operators.clone();
+        if func.locals.len() > 0 {
+            write!(&mut self.writer, "-- Locals").map_err(|e| anyhow!("{}", e))?;
+            self.nl()?;
+        }
 
+        for l in &func.locals {
+            write!(
+                &mut self.writer,
+                "{}",
+                translation.header.atoms[l.name_index.as_u32() as usize]
+            )
+            .map_err(|e| anyhow!("{}", e))?;
+            self.nl()?;
+        }
+
+        if func.closure_vars.len() > 0 {
+            write!(&mut self.writer, "-- Closure Vars").map_err(|e| anyhow!("{}", e))?;
+            self.nl()?;
+        }
+
+        for v in &func.closure_vars {
+            write!(
+                &mut self.writer,
+                "{}",
+                translation.header.atoms[v.name_index.as_u32() as usize]
+            )
+            .map_err(|e| anyhow!("{}", e))?;
+            self.space2()?;
+
+            if v.is_local {
+                write!(&mut self.writer, "local").map_err(|e| anyhow!("{}", e))?;
+            }
+            self.space2()?;
+
+            write!(&mut self.writer, "index {}", v.index).map_err(|e| anyhow!("{}", e))?;
+            self.nl()?;
+        }
+
+        let mut reader = func.operators.clone();
+        if !reader.done() {
+            write!(&mut self.writer, "-- Operators").map_err(|e| anyhow!("{}", e))?;
+            self.nl()?;
+        }
         while !reader.done() {
             let op = Opcode::from_reader(&mut reader)?;
             write!(self.writer, "{:#01x}", op.0)?;
