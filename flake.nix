@@ -48,6 +48,7 @@
             # rquickjs automatically installs the WASI SDK.
             BINDGEN_EXTRA_CLANG_ARGS_wasm32_wasip1 = "";
             BINDGEN_EXTRA_CLANG_ARGS_wasm32_wasip2 = "";
+            BINDGEN_EXTRA_CLANG_ARGS_wasm32_wasip1 = "";
             LIBCLANG_PATH = "${pkgs.llvmPackages_latest.libclang.lib}/lib";
           };
         });
