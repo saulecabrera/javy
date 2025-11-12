@@ -1635,6 +1635,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "javy-compiler-rt-plugin"
+version = "7.0.1"
+dependencies = [
+ "anyhow",
+ "javy-plugin-api",
+ "wit-bindgen 0.47.0",
+]
+
+[[package]]
 name = "javy-fuzz"
 version = "0.0.0"
 dependencies = [
