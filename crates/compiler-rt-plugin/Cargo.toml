@@ -1,0 +1,15 @@
+[package]
+name = "javy-compiler-rt-plugin"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "javy_compiler_rt"
+crate-type = ["cdylib"]
+
+[dependencies]
+anyhow = { workspace = true }
+javy-plugin-api = { path = "../plugin-api", features = ["json"] }
+wit-bindgen = { workspace = true }

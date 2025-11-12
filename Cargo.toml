@@ -4,6 +4,7 @@ members = [
   "crates/codegen",
   "crates/javy",
   "crates/plugin",
+  "crates/compiler-rt-plugin",
   "crates/plugin-api",
   "crates/plugin-processing",
   "crates/test-invalid-plugin",
