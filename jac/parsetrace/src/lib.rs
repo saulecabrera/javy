@@ -264,9 +264,6 @@ pub fn report(pc: u32, func_index: FuncIndex, translation: &Translation, op: &Op
             PutLocCheckInit { index } => translation
                 .resolve_func_local_name(func_index, index)
                 .to_string(),
-            GetLocCheckThis { index } => translation
-                .resolve_func_local_name(func_index, index)
-                .to_string(),
             GetVarRefCheck { index } => translation
                 .resolve_closure_var_name(func_index, index)
                 .to_string(),
