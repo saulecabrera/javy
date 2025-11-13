@@ -1577,6 +1577,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "jacrt"
+version = "7.0.1"
+dependencies = [
+ "anyhow",
+ "javy-plugin-api",
+ "wit-bindgen 0.47.0",
+]
+
+[[package]]
 name = "javy"
 version = "6.0.1-alpha.1"
 dependencies = [
@@ -1632,15 +1641,6 @@ dependencies = [
  "wasmtime-wasi",
  "wit-parser 0.240.0",
  "wizer",
-]
-
-[[package]]
-name = "javy-compiler-rt-plugin"
-version = "7.0.1"
-dependencies = [
- "anyhow",
- "javy-plugin-api",
- "wit-bindgen 0.47.0",
 ]
 
 [[package]]
