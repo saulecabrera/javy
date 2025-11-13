@@ -3,7 +3,10 @@
 
 use anyhow::anyhow;
 use javy_plugin_api::import_namespace;
-use javy_plugin_api::javy::{Runtime, quickjs::{qjs, Ctx, Value}};
+use javy_plugin_api::javy::{
+    quickjs::{qjs, Ctx, Value},
+    Runtime,
+};
 use std::{
     alloc::{self, Layout},
     cell::OnceCell,
@@ -14,7 +17,7 @@ use std::{
 mod env;
 use env::CompilerRuntime;
 
-import_namespace!("javy-compiler-rt");
+import_namespace!("jacrt");
 
 // Unlike C's realloc, zero-length allocations need not have
 // unique addresses, so a zero-length allocation may be passed
