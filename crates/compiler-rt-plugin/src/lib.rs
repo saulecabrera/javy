@@ -3,7 +3,7 @@
 
 use anyhow::anyhow;
 use javy_plugin_api::import_namespace;
-use javy_plugin_api::javy::quickjs::{qjs, Ctx, Value};
+use javy_plugin_api::javy::{Runtime, quickjs::{qjs, Ctx, Value}};
 use std::{
     alloc::{self, Layout},
     cell::OnceCell,
@@ -23,7 +23,7 @@ import_namespace!("javy-compiler-rt");
 const ZERO_SIZE_ALLOCATION_PTR: *mut u8 = 1 as _;
 
 /// Runtime.
-static mut RT: OnceCell<CompilerRuntime> = OnceCell::new();
+static mut RT: OnceCell<Runtime> = OnceCell::new();
 
 /// Allocates memory in instance.
 ///
@@ -67,9 +67,8 @@ unsafe extern "C" fn cabi_realloc(
 }
 
 #[no_mangle]
-extern "C" fn init(_var_ref_slots: u32) -> *mut qjs::JSContext {
-    let mut runtime = CompilerRuntime::new();
-    let _ = runtime.new_env();
+extern "C" fn init(var_ref_slots: usize) -> *mut qjs::JSContext {
+    let runtime = CompilerRuntime::init(var_ref_slots);
 
     unsafe {
         RT.set(runtime)
@@ -78,14 +77,13 @@ extern "C" fn init(_var_ref_slots: u32) -> *mut qjs::JSContext {
 
         RT.get()
             .expect("Runtime to be initialized")
-            .inner
             .context()
             .as_raw()
             .as_ptr()
     }
 }
 
-#[export_name = "closure"]
+#[no_mangle]
 unsafe extern "C" fn closure(
     context: *mut qjs::JSContext,
     _name_ptr: *mut ffi::c_char,
@@ -94,7 +92,7 @@ unsafe extern "C" fn closure(
     magic: u32,
 ) -> qjs::JSValue {
     // TODO: Could use `JS_NewCFunctionMagic`, but it's declared as
-    // `static inline ...`
+    // `static inline...`
     let func = qjs::JS_NewCFunctionData(
         context,
         Some(callback),
