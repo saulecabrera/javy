@@ -10,6 +10,7 @@
         {
           devShells.default = pkgs.mkShell {
             packages = with pkgs; [
+              wasm-tools
               wasmtime
               llvmPackages_latest.libclang
             ];
