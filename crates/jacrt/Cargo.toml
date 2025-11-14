@@ -6,7 +6,7 @@ edition.workspace = true
 license.workspace = true
 
 [lib]
-name = "javy_compiler_rt"
+name = "jacrt"
 crate-type = ["cdylib"]
 
 [dependencies]

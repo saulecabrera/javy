@@ -3,7 +3,11 @@
 
 //! Runtime environment.
 
-use javy_plugin_api::javy::{quickjs::{qjs, Value, Ctx}, Runtime};
+use javy_plugin_api::javy::{
+    quickjs::{qjs, Ctx, Value},
+    Runtime,
+};
+use std::collections::HashMap;
 use std::{cell::RefCell, rc::Rc};
 
 /// Shared value reference.
@@ -24,10 +28,12 @@ impl<'ctx> VarRef<'ctx> {
     }
 
     fn get(&self) -> Self {
-	VarRef { slot: Rc::clone(&self.slot) }
+        VarRef {
+            slot: Rc::clone(&self.slot),
+        }
     }
 
-    fn get_value(&self) -> Value<'ctx> {
+    pub fn get_value(&self) -> Value<'ctx> {
         self.slot.borrow().clone()
     }
 }
@@ -51,6 +57,7 @@ impl<'ctx> Frame<'ctx> {
     }
 }
 
+#[derive(Hash, Eq, PartialEq, Clone, Copy)]
 pub struct FuncEnvHandle(usize);
 impl FuncEnvHandle {
     pub fn from_usize(n: usize) -> Self {
@@ -68,56 +75,53 @@ pub struct FuncEnv<'ctx> {
     var_refs: Vec<VarRef<'ctx>>,
 }
 
-
-
 pub struct CompilerRuntime<'ctx> {
     /// Function frames.
     frames: Vec<Frame<'ctx>>,
     /// A list of metadata, per-function.
-    func_envs: Vec<FuncEnv<'ctx>>,
+    func_envs: HashMap<FuncEnvHandle, FuncEnv<'ctx>>,
     /// The current function environment.
     current_env: FuncEnvHandle,
 }
 
 impl<'ctx> CompilerRuntime<'ctx> {
     /// Setup the initial state of the compiler runtime.
-    pub fn init(var_ref_slots: usize) ->  Runtime {
-	let  runtime = Runtime::default();
-	runtime.context().with(|cx| {
-	    let mut var_refs = vec![];
-	    for _ in 0..var_ref_slots {
-		let var_ref = VarRef::new(Value::new_undefined(cx.clone()));
-		var_refs.push(var_ref);
-	    }
-	    let env = FuncEnv { var_refs };
-	    let inner = Box::new(CompilerRuntime {
-		current_env: FuncEnvHandle::from_usize(0),
-		frames: vec![],
-		func_envs: vec![env],
-	    });
+    pub fn init(var_ref_slots: usize) -> Runtime {
+        let runtime = Runtime::default();
+        runtime.context().with(|cx| {
+            let mut var_refs = vec![];
+            for _ in 0..var_ref_slots {
+                let var_ref = VarRef::new(Value::new_undefined(cx.clone()));
+                var_refs.push(var_ref);
+            }
+            let env = FuncEnv { var_refs };
+            let mut func_envs = HashMap::new();
+            let current_env = FuncEnvHandle::from_usize(0);
+            func_envs.insert(current_env, env);
+            let inner = Box::new(CompilerRuntime {
+                current_env,
+                frames: vec![],
+                func_envs,
+            });
 
-	    let opaque = Box::into_raw(inner);
-	    // TODO: ensure that this memory gets correctly dropped.
-	    unsafe { qjs::JS_SetContextOpaque(cx.as_raw().as_ptr(), opaque as _) };
-	});
-	runtime
+            let opaque = Box::into_raw(inner);
+            // TODO: ensure that this memory gets correctly dropped.
+            unsafe { qjs::JS_SetContextOpaque(cx.as_raw().as_ptr(), opaque as _) };
+        });
+        runtime
     }
 
     /// Get a mutable reference to the `CompilerRuntime`
     /// stored in the given context.
     pub fn mut_from_context(cx: Ctx<'ctx>) -> &'ctx mut Self {
-	unsafe {
-	   let ptr = qjs::JS_GetContextOpaque(cx.as_raw().as_ptr()) as *mut Self;
-	    &mut *ptr
-	}
+        unsafe {
+            let ptr = qjs::JS_GetContextOpaque(cx.as_raw().as_ptr()) as *mut Self;
+            &mut *ptr
+        }
     }
 
     fn get_current_func_env(&self) -> &FuncEnv<'ctx> {
-	&self.func_envs[self.current_env.as_usize()]
-    }
-
-    fn get_current_func_env_mut(&mut self) -> &mut FuncEnv<'ctx> {
-	&mut self.func_envs[self.current_env.as_usize()]
+        &self.func_envs[&self.current_env]
     }
 
     /// Ensures that the variable reference at index is correctly
@@ -127,17 +131,23 @@ impl<'ctx> CompilerRuntime<'ctx> {
     /// the index, in the non-local case is an index to a VarRef
     /// in the current function enviorement.
     pub fn resolve_non_local_var_ref(&mut self, index: usize, target_handle: FuncEnvHandle) {
-	let current = self.get_current_func_env();
-	let var_ref = current.var_refs[index].get();
-	let target = &mut self.func_envs[target_handle.as_usize()];
-	target.var_refs.push(var_ref)
+        let current = self.get_current_func_env();
+        let var_ref = current.var_refs[index].get();
+        let target = &mut self.func_envs.get_mut(&target_handle).unwrap();
+        target.var_refs.push(var_ref)
     }
 
     /// Set the given value at the given index.
-    pub fn set_var_ref(&mut self, index: usize, val: Value<'ctx>) {
-	let current = self.get_current_func_env();
-	let vref = &current.var_refs[index];
-	vref.set(val)
+    pub fn put_var_ref(&mut self, index: usize, val: Value<'ctx>) {
+        let current = self.get_current_func_env();
+        let vref = &current.var_refs[index];
+        vref.set(val)
+    }
+
+    /// Get the `VarRef` at index.
+    pub fn get_var_ref_value(&self, index: usize) -> Value<'ctx> {
+        let current = self.get_current_func_env();
+        current.var_refs[index].get().get_value()
     }
 
     /// Push a new frame.
@@ -146,11 +156,8 @@ impl<'ctx> CompilerRuntime<'ctx> {
     }
 
     /// Create a new function environment.
-    pub fn push_default_env(&mut self) -> FuncEnvHandle {
-        let index = self.func_envs.len();
-        let result = FuncEnvHandle::from_usize(index);
-        self.func_envs.push(Default::default());
-        result
+    pub fn push_default_env(&mut self, handle: FuncEnvHandle) {
+        self.func_envs.insert(handle, Default::default());
     }
 
     fn current_frame(&self) -> &Frame<'ctx> {
@@ -163,49 +170,56 @@ impl<'ctx> CompilerRuntime<'ctx> {
 
 #[cfg(test)]
 mod tests {
-    use super::CompilerRuntime;
-    use javy_plugin_api::javy::{quickjs::Value};
+    use super::{CompilerRuntime, FuncEnvHandle};
+    use javy_plugin_api::javy::quickjs::Value;
 
     #[test]
     fn initializes_the_runtime_with_the_given_var_refs() {
-	let runtime = CompilerRuntime::init(10);
-	runtime.context().with(|cx| {
-	    let compiler_runtime = CompilerRuntime::mut_from_context(cx);
+        let runtime = CompilerRuntime::init(10);
+        runtime.context().with(|cx| {
+            let compiler_runtime = CompilerRuntime::mut_from_context(cx);
 
-	    assert_eq!(compiler_runtime.func_envs.len(), 1);
-	    assert_eq!(compiler_runtime.func_envs[0].var_refs.len(), 10);
+            assert_eq!(compiler_runtime.func_envs.len(), 1);
+            assert_eq!(
+                compiler_runtime.func_envs[&FuncEnvHandle::from_usize(0)]
+                    .var_refs
+                    .len(),
+                10
+            );
 
-	    for vr in &compiler_runtime.func_envs[0].var_refs {
-		assert!(vr.get_value().is_undefined());
-	    }
-	});
+            for vr in &compiler_runtime.func_envs[&FuncEnvHandle::from_usize(0)].var_refs {
+                assert!(vr.get_value().is_undefined());
+            }
+        });
     }
 
     #[test]
     fn changes_to_var_refs_are_observable() {
-	let runtime = CompilerRuntime::init(2);
+        let runtime = CompilerRuntime::init(2);
 
-	runtime.context().with(|cx| {
-	    let compiler_runtime = CompilerRuntime::mut_from_context(cx.clone());
-	    // Create a new env, e.g., what would need to happen when
-	    // creating a closure.
-	    let handle = compiler_runtime.push_default_env();
-	    // Resolve closure value references.
-	    compiler_runtime.resolve_non_local_var_ref(0, handle);
-	    compiler_runtime.set_var_ref(0, Value::new_int(cx.clone(), 42));
+        runtime.context().with(|cx| {
+            let compiler_runtime = CompilerRuntime::mut_from_context(cx.clone());
+            // Create a new env, e.g., what would need to happen when
+            // creating a closure.
+            let main_handle = FuncEnvHandle::from_usize(0);
+            let handle = FuncEnvHandle::from_usize(3);
+            compiler_runtime.push_default_env(handle);
+            // Resolve closure value references.
+            compiler_runtime.resolve_non_local_var_ref(0, handle);
+            compiler_runtime.put_var_ref(0, Value::new_int(cx.clone(), 42));
 
-	    let main = &compiler_runtime.func_envs[0];
-	    let closure = &compiler_runtime.func_envs[1];
+            let main = &compiler_runtime.func_envs[&main_handle];
+            let closure = &compiler_runtime.func_envs[&handle];
 
-	    assert_eq!(main.var_refs.len(), 2);
-	    assert_eq!(closure.var_refs.len(), 1);
+            assert_eq!(main.var_refs.len(), 2);
+            assert_eq!(closure.var_refs.len(), 1);
 
-	    assert!(main.var_refs[0].get_value().is_int());
-	    assert!(main.var_refs[1].get_value().is_undefined());
+            assert!(main.var_refs[0].get_value().is_int());
+            assert!(main.var_refs[1].get_value().is_undefined());
 
-	    assert!(closure.var_refs[0].get_value().is_int());
+            assert!(closure.var_refs[0].get_value().is_int());
 
-	    assert!(closure.var_refs[0].get_value() == main.var_refs[0].get_value());
-	})
+            assert!(closure.var_refs[0].get_value() == main.var_refs[0].get_value());
+        })
     }
 }

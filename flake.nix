@@ -35,6 +35,7 @@
             packages = with pkgs; [
               wasiSdk
               rustToolchain
+              wasm-tools
               wasmtime
               llvmPackages_latest.libclang
             ];
