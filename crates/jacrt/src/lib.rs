@@ -106,13 +106,15 @@ unsafe extern "C" fn call(
     // TODO: add rest of the call arguments
 ) -> qjs::JSValue {
     let cx = context_from_raw(context);
-    let result = unsafe { qjs::JS_Call(
-        cx.as_raw().as_ptr(),
-        Value::from_raw(cx.clone(), callee).as_raw().clone(),
-        Value::new_undefined(cx.clone()).as_raw(),
-        0,
-        ptr::null_mut(),
-    )};
+    let result = unsafe {
+        qjs::JS_Call(
+            cx.as_raw().as_ptr(),
+            Value::from_raw(cx.clone(), callee).as_raw().clone(),
+            Value::new_undefined(cx.clone()).as_raw(),
+            0,
+            ptr::null_mut(),
+        )
+    };
 
     // TODO:Increase ref count.
     unsafe { Value::from_raw(cx.clone(), result).clone().as_raw() }
