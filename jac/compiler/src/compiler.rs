@@ -1,6 +1,6 @@
 use crate::builder::FunctionBuilder;
 use anyhow::Result;
-use jac_translate::{quickpars::Opcode, FunctionTranslation, Translation};
+use jac_translate::{FunctionTranslation, Translation, quickpars::Opcode};
 
 /// QuickJS-bytecode-to-Wasm compiler.
 pub(crate) struct Compiler<'data> {

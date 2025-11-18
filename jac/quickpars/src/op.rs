@@ -1,6 +1,6 @@
 use crate::readers::BinaryReader;
 use crate::{AtomIndex, ClosureVarIndex, ConstantPoolIndex, LocalIndex};
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 
 /// A QuickJS operator code.
 #[repr(u8)]

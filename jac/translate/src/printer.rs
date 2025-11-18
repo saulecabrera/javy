@@ -1,5 +1,5 @@
-use crate::{quickpars::Opcode, FunctionTranslation, Translation, TranslationBuilder};
-use anyhow::{anyhow, Result};
+use crate::{FunctionTranslation, Translation, TranslationBuilder, quickpars::Opcode};
+use anyhow::{Result, anyhow};
 use std::fmt::Write;
 
 /// Pretty-print a translation of the QuikckJS bytecode,
