@@ -86,12 +86,11 @@ pub struct CompilerRuntime<'ctx> {
 
 impl<'ctx> CompilerRuntime<'ctx> {
     /// Setup the initial state of the compiler runtime.
-    pub fn init(var_ref_slots: usize) -> Runtime {
-        let runtime = Runtime::default();
+    pub fn init(var_ref_slots: usize, runtime: &Runtime) {
         runtime.context().with(|cx| {
             let mut var_refs = vec![];
             for _ in 0..var_ref_slots {
-                let var_ref = VarRef::new(Value::new_undefined(cx.clone()));
+                let var_ref = VarRef::new(Value::new_uninitialized(cx.clone()));
                 var_refs.push(var_ref);
             }
             let env = FuncEnv { var_refs };
@@ -108,7 +107,6 @@ impl<'ctx> CompilerRuntime<'ctx> {
             // TODO: ensure that this memory gets correctly dropped.
             unsafe { qjs::JS_SetContextOpaque(cx.as_raw().as_ptr(), opaque as _) };
         });
-        runtime
     }
 
     /// Get a mutable reference to the `CompilerRuntime`
@@ -166,16 +164,25 @@ impl<'ctx> CompilerRuntime<'ctx> {
             .as_ref()
             .expect("Current frame to be available")
     }
+
+    pub fn set_current_env(&mut self, handle: FuncEnvHandle) {
+        // TODO: Check that it exists.
+        self.current_env = handle;
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{CompilerRuntime, FuncEnvHandle};
-    use javy_plugin_api::javy::quickjs::Value;
+    use javy_plugin_api::javy::{
+        quickjs::{Type, Value},
+        Runtime,
+    };
 
     #[test]
     fn initializes_the_runtime_with_the_given_var_refs() {
-        let runtime = CompilerRuntime::init(10);
+        let runtime = Runtime::default();
+        CompilerRuntime::init(10, &runtime);
         runtime.context().with(|cx| {
             let compiler_runtime = CompilerRuntime::mut_from_context(cx);
 
@@ -188,14 +195,15 @@ mod tests {
             );
 
             for vr in &compiler_runtime.func_envs[&FuncEnvHandle::from_usize(0)].var_refs {
-                assert!(vr.get_value().is_undefined());
+                assert_eq!(vr.get_value().type_of(), Type::Uninitialized);
             }
         });
     }
 
     #[test]
     fn changes_to_var_refs_are_observable() {
-        let runtime = CompilerRuntime::init(2);
+        let runtime = Runtime::default();
+        CompilerRuntime::init(2, &runtime);
 
         runtime.context().with(|cx| {
             let compiler_runtime = CompilerRuntime::mut_from_context(cx.clone());
@@ -215,7 +223,7 @@ mod tests {
             assert_eq!(closure.var_refs.len(), 1);
 
             assert!(main.var_refs[0].get_value().is_int());
-            assert!(main.var_refs[1].get_value().is_undefined());
+            assert_eq!(main.var_refs[1].get_value().type_of(), Type::Uninitialized);
 
             assert!(closure.var_refs[0].get_value().is_int());
 

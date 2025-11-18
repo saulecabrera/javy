@@ -147,6 +147,13 @@ where
     Ok(())
 }
 
+/// Returns a reference to the previously initialized runtime.
+/// # Panics
+/// This function panics if called prior to calling `initialize_runtime`.
+pub fn runtime() -> &'static Runtime {
+    unsafe { RUNTIME.get().unwrap() }
+}
+
 /// Compiles JS source code to QuickJS bytecode.
 ///
 /// Returns result with the success value being a vector of the bytecode and

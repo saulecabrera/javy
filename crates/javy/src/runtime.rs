@@ -144,11 +144,6 @@ impl Runtime {
         &self.context
     }
 
-    /// A reference to the inner QuickJS runtime.
-    pub fn rt(&self) -> &QRuntime {
-        &self.inner
-    }
-
     /// Resolves all the pending jobs in the queue.
     pub fn resolve_pending_jobs(&self) -> Result<()> {
         if self.inner.is_job_pending() {
