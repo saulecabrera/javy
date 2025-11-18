@@ -1562,7 +1562,7 @@ dependencies = [
 
 [[package]]
 name = "jac-translate"
-version = "7.0.1"
+version = "8.0.0"
 dependencies = [
  "anyhow",
  "quickpars",
@@ -1578,11 +1578,10 @@ dependencies = [
 
 [[package]]
 name = "jacrt"
-version = "7.0.1"
+version = "8.0.0"
 dependencies = [
  "anyhow",
  "javy-plugin-api",
- "wit-bindgen 0.47.0",
 ]
 
 [[package]]
@@ -1617,6 +1616,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "walrus",
+ "wasm-opt",
  "wasmtime",
  "wasmtime-wasi",
  "wit-component",

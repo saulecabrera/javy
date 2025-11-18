@@ -4,8 +4,8 @@
 //! Runtime environment.
 
 use javy_plugin_api::javy::{
-    quickjs::{qjs, Ctx, Value},
     Runtime,
+    quickjs::{Ctx, Value, qjs},
 };
 use std::collections::HashMap;
 use std::{cell::RefCell, rc::Rc};
@@ -175,8 +175,8 @@ impl<'ctx> CompilerRuntime<'ctx> {
 mod tests {
     use super::{CompilerRuntime, FuncEnvHandle};
     use javy_plugin_api::javy::{
-        quickjs::{Type, Value},
         Runtime,
+        quickjs::{Type, Value},
     };
 
     #[test]
