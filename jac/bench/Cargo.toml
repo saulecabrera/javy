@@ -1,0 +1,22 @@
+[package]
+name = "jac-bench"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+wasmtime = { workspace = true }
+wasmtime-wasi = { workspace = true }
+anyhow = { workspace = true }
+
+[dev-dependencies]
+criterion = "0.7"
+
+[[bench]]
+name = "jac"
+harness = false
+
+[build-dependencies]
+anyhow = { workspace = true }
+javy-plugin-processing = { path = "../../crates/plugin-processing" }

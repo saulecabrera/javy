@@ -3,6 +3,7 @@ javy.wat
 javy.wasm
 /index.js
 index.wasm
+jacrt.init.wasm
 index.wit
 .envrc
 .direnv/

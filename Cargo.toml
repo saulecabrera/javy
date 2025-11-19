@@ -18,6 +18,7 @@ members = [
   "jac/parsetrace",
   "jac/quickpars",
   "jac/translate",
+  "jac/bench",
 ]
 resolver = "2"
 
