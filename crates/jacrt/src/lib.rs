@@ -10,6 +10,19 @@ use env::{CompilerRuntime, FuncEnvHandle};
 import_namespace!("jacrt");
 
 fn context_from_raw<'js>(raw_context: *mut qjs::JSContext) -> Ctx<'js> {
+    // SAFETY
+    // The documentation for `Ctx::from_raw` states:
+    //
+    // User must ensure that a lock was acquired over the runtime and
+    // that invariant is a unique lifetime which can’t be coerced to a
+    // lifetime outside the scope of the lock of to the lifetime of
+    // another runtime.
+    //
+    // Note that in our use-case:
+    // There's 1:1 relationship between Runtime and Context, which
+    // prevents the Runtime from getting acquired elsewhere; which by
+    // consequence also enforces a 1:1 relationship between Runtime
+    // and Context in terms of lifetime.
     unsafe { Ctx::from_raw(NonNull::new(raw_context).unwrap()) }
 }
 
@@ -155,7 +168,6 @@ unsafe extern "C" fn callback(
     magic: i32,
     _data: *mut qjs::JSValue,
 ) -> qjs::JSValue {
-    println!("coming to the callback");
     let cx = context_from_raw(context);
     let crt = CompilerRuntime::mut_from_context(cx.clone());
     crt.set_current_env(FuncEnvHandle::from_usize(magic as usize));
@@ -163,7 +175,6 @@ unsafe extern "C" fn callback(
     // TODO: Restore current env handle?
     let res = unsafe { inv(magic as usize, cx.clone().as_raw().as_ptr()) };
     let res = unsafe { Value::from_raw(cx.clone(), res).clone() };
-    dbg!(&res);
     res.as_raw()
 }
 
