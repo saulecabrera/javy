@@ -1,11 +1,11 @@
-;; This module is a tempate of what the compiler would need to emit
+;; This module is a template of what the compiler would need to emit
 ;; for a function like:
 
 ;; let secret = 22;
 ;; function main() {
 ;;     return secret * secret;
 ;; }
-;; main
+;; main()
 
 ;; For which bytecode looks like:
 

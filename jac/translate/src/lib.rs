@@ -118,6 +118,12 @@ impl<'data> FunctionTranslation<'data> {
     fn resolve_arg_name_index(&self, local_index: LocalIndex) -> AtomIndex {
         self.locals[local_index.as_u32() as usize].name_index
     }
+
+    /// Checks if the function is the top level eval function.
+    pub fn is_top_level_eval(&self, translation: &Translation) -> bool {
+        self.index == FuncIndex::from_u32(0)
+            && translation.resolve_atom_name(self.header.name_index) == "<eval>"
+    }
 }
 
 #[derive(Default, Clone, Debug)]
