@@ -46,6 +46,23 @@ impl<'data> Translation<'data> {
         &self.header.atoms[index.as_u32() as usize]
     }
 
+    /// Resolve the function index of the given [`ConstantPoolIndex`],
+    /// when referenced from the context of the given [`FuncIndex`].
+    pub fn resolve_func_index(
+        &self,
+        index: FuncIndex,
+        constant_pool_index: ConstantPoolIndex,
+    ) -> FuncIndex {
+        let raw = index
+            .as_u32()
+            .checked_add(constant_pool_index.as_u32())
+            .unwrap()
+            .checked_add(CONSTANT_POOL_OFFSET)
+            .unwrap();
+        // TODO: assert that it exists?
+        FuncIndex::from_u32(raw)
+    }
+
     /// Resolves a closure variable name.
     pub fn resolve_closure_var_name(&self, index: FuncIndex, closure: ClosureVarIndex) -> &str {
         let func = &self.module.functions[index.as_u32() as usize];
