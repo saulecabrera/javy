@@ -19,7 +19,7 @@ pub use sections::*;
 
 macro_rules! entity {
     ($name:ident) => {
-        #[derive(Copy, Clone, Debug, Eq, PartialEq)]
+        #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
         pub struct $name(u32);
 
         impl Default for $name {
