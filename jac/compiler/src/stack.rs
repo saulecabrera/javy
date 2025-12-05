@@ -1,6 +1,7 @@
 //! Abstract stack definition.
 
-use waffle::{Type, Value};
+use crate::compiler::FuncEnv;
+use waffle::{Operator, Type, Value};
 
 /// Abstract stack value.
 pub(crate) struct StackVal {
@@ -31,5 +32,31 @@ impl Stack {
     /// Push one value to the stack.
     pub fn push(&mut self, val: StackVal) {
         self.inner.push(val)
+    }
+
+    /// Get the operator value arguments.
+    // TODO: We can potentially do better here and avoid returning a
+    // `Vec` all the time.
+    pub fn get_op_args(&mut self, op: Operator, env: &FuncEnv) -> (Vec<Value>, Type) {
+        match op {
+            Operator::I32Const { .. } => (vec![], Type::I32),
+            Operator::Call { function_index } => {
+                let decl = &env.result.funcs[function_index];
+                let sig = &env.result.signatures[decl.sig()];
+                let param_count = sig.params.len();
+                let mut args = Vec::with_capacity(param_count);
+                for (param, stack_val) in sig
+                    .params
+                    .iter()
+                    .zip(self.inner.iter().rev().take(param_count))
+                {
+                    assert!(stack_val.ty == *param);
+                    args.push(stack_val.val);
+                }
+                self.inner.truncate(param_count);
+                (args, sig.returns[0])
+            }
+            _ => todo!(),
+        }
     }
 }
