@@ -8,6 +8,7 @@ use jac_translate::TranslationBuilder;
 mod builder;
 mod compiler;
 mod crt;
+mod frontend;
 mod stack;
 
 pub fn compile(bytes: &[u8]) -> Result<Vec<u8>> {

@@ -3,6 +3,7 @@
 use waffle::{SignatureData, Type};
 
 static MODULE: &'static str = "jacrt";
+static LINK_MODULE: &'static str = "jacrt-link";
 
 /// Metadata for context initialization.
 pub const fn init() -> (&'static str, &'static str, [Type; 1], Type) {
@@ -41,4 +42,9 @@ pub const fn put_var_ref() -> (&'static str, &'static str, [Type; 3]) {
 /// Metadata for getting a variable reference.
 pub const fn get_var_ref() -> (&'static str, &'static str, [Type; 2], Type) {
     (MODULE, "get-var-ref", [Type::I32, Type::I32], Type::I64)
+}
+
+/// Metadata about the functions table.
+pub const fn func_table() -> (&'static str, &'static str) {
+    (LINK_MODULE, "functions")
 }

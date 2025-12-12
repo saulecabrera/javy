@@ -34,29 +34,16 @@ impl Stack {
         self.inner.push(val)
     }
 
-    /// Get the operator value arguments.
-    // TODO: We can potentially do better here and avoid returning a
-    // `Vec` all the time.
-    pub fn get_op_args(&mut self, op: Operator, env: &FuncEnv) -> (Vec<Value>, Type) {
-        match op {
-            Operator::I32Const { .. } => (vec![], Type::I32),
-            Operator::Call { function_index } => {
-                let decl = &env.result.funcs[function_index];
-                let sig = &env.result.signatures[decl.sig()];
-                let param_count = sig.params.len();
-                let mut args = Vec::with_capacity(param_count);
-                for (param, stack_val) in sig
-                    .params
-                    .iter()
-                    .zip(self.inner.iter().rev().take(param_count))
-                {
-                    assert!(stack_val.ty == *param);
-                    args.push(stack_val.val);
-                }
-                self.inner.truncate(param_count);
-                (args, sig.returns[0])
-            }
-            _ => todo!(),
-        }
+    /// Peeks the top `n` elements in the stack.
+    pub fn peekn(&self, n: usize) -> &[StackVal] {
+        assert!(n <= self.inner.len());
+
+        let start = self.inner.len().checked_sub(n).unwrap();
+        &self.inner[start..]
+    }
+
+    /// Drops the last `n` elements from the stack.
+    pub fn drop(&mut self, n: usize) {
+        self.inner.truncate(n);
     }
 }
