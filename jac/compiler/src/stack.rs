@@ -8,13 +8,21 @@ pub(crate) struct StackVal {
     /// The inner SSA value.
     pub val: Value,
     /// The associated type.
-    pub ty: Type,
+    pub ty: Option<Type>,
 }
 
 impl StackVal {
     /// Create a new stack val.
-    pub fn new(val: Value, ty: Type) -> Self {
+    pub fn new(val: Value, ty: Option<Type>) -> Self {
         Self { val, ty }
+    }
+
+    pub fn i32(val: Value) -> Self {
+	Self  { val, ty: Some(Type::I32) }
+    }
+
+    pub fn void(val: Value) -> Self {
+	Self { val, ty: None }
     }
 }
 

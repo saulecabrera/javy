@@ -1867,6 +1867,7 @@ dependencies = [
  "convert_case",
  "insta",
  "jac-translate",
+ "jacc",
  "swc_core",
  "tempfile",
  "walrus",

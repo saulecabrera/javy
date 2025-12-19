@@ -177,12 +177,18 @@ impl<'a> InstructionBuilder<'a> {
             .add_op(self.block, op, &[], &[Type::I32])
     }
 
-    pub fn call(&mut self, callee: Func, args: &[Value], ret: Type) -> Value {
+    pub fn call(&mut self, callee: Func, args: &[Value], ret: Option<Type>) -> Value {
         let op = Operator::Call {
             function_index: callee,
         };
-        self.func_builder
-            .result
-            .add_op(self.block, op, args, &[ret])
+	if let Some(ret) = ret {
+	    self.func_builder
+		.result
+		.add_op(self.block, op, args, &[ret])
+	} else {
+	    self.func_builder
+		.result
+		.add_op(self.block, op, args, &[])
+	}
     }
 }

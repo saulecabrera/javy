@@ -82,7 +82,9 @@ fn main() -> Result<()> {
                 println!("{}", generator.inspect_bytecode(&js)?);
             }
 
-            Ok(())
+	    let wasm = generator.compile(&js)?;
+            fs::write(&opts.output, wasm)?;
+	    Ok(())
         }
     }
 }

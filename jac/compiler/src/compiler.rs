@@ -1,4 +1,5 @@
 use crate::crt;
+use crate::builder::FunctionBuilder;
 use crate::frontend::{Frontend, sig};
 use anyhow::Result;
 use jac_translate::{
@@ -23,7 +24,7 @@ pub(crate) struct FuncEnv<'a, 'data> {
     pub function_translation: &'a FunctionTranslation<'data>,
     pub result: &'a mut Module<'data>,
     pub defined_funcs: &'a mut BTreeMap<FuncIndex, (Signature, Func, Option<FuncRef>)>,
-    pub imported_funcs: &'a mut HashMap<&'static str, (Signature, Func)>,
+    pub imported_funcs: &'a mut HashMap<crt::RuntimeFunction, (Signature, Func)>,
     pub function_table_handle: Table,
     pub function_table: &'a mut EntityVec<FuncRef, Func>,
 }
@@ -37,9 +38,7 @@ pub(crate) struct Compiler<'data> {
     /// Translation function index to WebAssembly index mapping.
     defined_funcs: BTreeMap<FuncIndex, (Signature, Func, Option<FuncRef>)>,
     /// Known import function index to WebAssembly index mapping.
-    imported_funcs: HashMap<&'static str, (Signature, Func)>,
-    /// Trampoline count for QuickJS to Wasm calls.
-    trampoline_count: usize,
+    imported_funcs: HashMap<crt::RuntimeFunction, (Signature, Func)>,
     /// Vector of functions to keep track the order in which the
     /// functions that can be invoked by the QuickJS runtime can be
     /// invoked.
@@ -50,25 +49,18 @@ impl<'data> Compiler<'data> {
     /// Create a new compiler from the translated QuickJS bytecode.
     pub fn new(translation: Translation<'data>) -> Self {
         let mut function_table: EntityVec<FuncRef, Func> = EntityVec::default();
-        let trampoline_count = 1;
-        for _ in 0..trampoline_count {
-            // Invalid to start, will be patched later.
-            function_table.push(Func::default());
-        }
-
         Self {
             translation,
             result: Module::empty(),
             defined_funcs: Default::default(),
             imported_funcs: Default::default(),
-            trampoline_count,
             function_table,
         }
     }
 
     /// Perform compilation into Wasm bytes.
     pub fn compile(mut self) -> Result<Vec<u8>> {
-        let table_handle = self.import_functions_table();
+        let table_handle = self.add_runtime_imports();
 
         for func in &self.translation.module.functions {
             let sig = if self.defined_funcs.contains_key(&func.index) {
@@ -104,23 +96,41 @@ impl<'data> Compiler<'data> {
         self.result.to_wasm_bytes()
     }
 
+    /// Adds all the runtime imports to the module.
+    fn add_runtime_imports(&mut self) -> Table {
+	for builtin in crt::function_imports() {
+	    let signature_data = SignatureData {
+		params: builtin.params.into(),
+		returns: builtin.rets.map(|t| vec![t]).unwrap_or_default(),
+	    };
+
+            let sig_handle = self.result.signatures.push(signature_data);
+            let func_handle = self
+		.result
+		.funcs
+		.push(FuncDecl::Import(sig_handle, builtin.name.into()));
+            self.result.imports.push(Import {
+		module: builtin.module.into(),
+		name: builtin.name.into(),
+		kind: ImportKind::Func(func_handle),
+            });
+            self.imported_funcs
+		.insert(builtin, (sig_handle, func_handle));
+	}
+
+	self.import_functions_table()
+    }
+
     /// Imports the functions table, which will contain all the Wasm
     /// function definitions reachable by QuickJS.
     fn import_functions_table(&mut self) -> Table {
         let table_data = TableData {
             ty: Type::FuncRef,
-            initial: 0,
-            // The number of functions that "escape" the module
-            // through the function table equals the number of defined
-            // functions, plus the number of trampolines to enable
-            // QuickJS <> Wasm calls.
-            max: Some(
-                u64::try_from(self.translation.module.functions.len() + self.trampoline_count)
-                    .unwrap(),
-            ),
-            // NB: the elements will be patched later on, once
+            // NB: the table details will be patched later on, once
             // all the compiled functions are known.
             // See: patch functions table.
+            initial: 0,
+            max: None,
             func_elements: None,
         };
 
@@ -135,22 +145,57 @@ impl<'data> Compiler<'data> {
         table_handle
     }
 
-    /// Once compilation is finished, patched the functions table with
-    /// the indices to all the compiled functions.
+    /// Once compilation is finished, patch the functions table with
+    /// the indices of the trampoline generated for each compiled
+    /// function.
     fn patch_functions_table(&mut self, table: Table) {
+
+	let mut defined_trampolines = vec![];
+
+	for (table_indx, func_handle) in self.function_table.clone().entries() {
+	    defined_trampolines.push(self.wrap(*func_handle));
+	}
+
         let table_data = &mut self.result.tables[table];
-        table_data.func_elements = Some(self.function_table.values().cloned().collect());
+	let elem_count: u64 = u64::try_from(self.function_table.len()).unwrap();
+	table_data.initial = elem_count;
+	table_data.max = Some(elem_count);
+        table_data.func_elements = Some(defined_trampolines);
     }
 
     /// Defines a trampoline for QuickJS to Wasm functions.
     /// The trampoline has the following signature:
     /// (context: *mut JSContext, this: JSValue, argc: i32, argv: *mut JSValue, index: i32) -> JSValue
-    fn define_qjs_to_wasm_trampoline(&mut self) -> Func {
+    fn wrap(&mut self, inner: Func) -> Func {
         let sig = SignatureData {
             params: vec![Type::I32, Type::I64, Type::I32, Type::I32, Type::I32],
             returns: vec![Type::I64],
         };
-        let sig_handle = self.result.signatures.push(sig);
-        todo!()
+        let sig_handle = self.result.signatures.push(sig.clone());
+	let mut builder = FunctionBuilder::new(sig_handle);
+	builder.result.n_params = sig.params.len();
+	builder.result.rets = sig.returns.clone();
+
+	for p in &sig.params {
+	    builder.result.locals.push((*p).into());
+	}
+
+	let entry = builder.result.add_block();
+	builder.result.entry = entry;
+	builder.seal(entry);
+	builder.current_block(entry);
+
+	for (local, ty) in builder.result.locals.clone().entries() {
+	    let val = builder.result.add_blockparam(entry, *ty);
+	    builder.declare_local(local, *ty);
+	    builder.def_local(local, val);
+	}
+
+
+	let exit = builder.result.add_block();
+	builder.add_blockparams(exit, &sig.returns);
+	builder.exit(exit);
+	
+	self.result.funcs.push(FuncDecl::Body(sig_handle, "".into(), builder.result))
     }
 }

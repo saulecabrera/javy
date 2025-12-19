@@ -75,7 +75,7 @@ impl<'a, 'data> CallBuilder<'a, 'data> {
 
     /// Build a call instruction.
     /// Taking into account the appropriate invariants.
-    fn build(&mut self, callee: Func) -> (Type, Value) {
+    fn build(&mut self, callee: Func) -> (Option<Type>, Value) {
         let decl = &self.env.result.funcs[callee];
         let sig = &self.env.result.signatures[decl.sig()];
         let param_count = sig.params.len();
@@ -84,16 +84,16 @@ impl<'a, 'data> CallBuilder<'a, 'data> {
 
         let mut values = vec![];
         for (param, val) in sig.params.iter().zip(args.iter()) {
-            assert!(val.ty == *param);
+            assert!(val.ty == Some(*param));
             values.push(val.val);
         }
 
         let ret = self
             .builder
             .instr_builder()
-            .call(callee, &values, sig.returns[0]);
+            .call(callee, &values, sig.returns.get(0).copied());
         self.stack.drop(param_count);
-        (sig.returns[0], ret)
+        (sig.returns.get(0).copied(), ret)
     }
 }
 
@@ -137,7 +137,7 @@ impl<'a, 'data> Frontend<'a, 'data> {
     }
 
     /// Generic helper to make a function call.
-    fn make_call(&mut self, f: Func) -> (Type, Value) {
+    fn make_call(&mut self, f: Func) -> (Option<Type>, Value) {
         CallBuilder::new(&self.env, &mut self.builder, &mut self.stack).build(f)
     }
 
@@ -153,52 +153,16 @@ impl<'a, 'data> Frontend<'a, 'data> {
             // Pushing to the abstract stack to make it easier to derive the call args
             // via `Stack::get_op_args` below as opposed having a different code path.
             self.stack
-                .push(StackVal::new(closure_vars_count_val, Type::I32));
+                .push(StackVal::i32(closure_vars_count_val));
 
-            let (module, name, params, returns) = crt::init();
-            let (_, func) = self.maybe_add_function_import(module, name, &params, Some(returns));
+            let builtin = crt::init();
+            let (_, func) = self.env.imported_funcs[&builtin];
             let (_, context_val) = self.make_call(func);
             // Local 0 is the context.
             // TODO: Perhaps store the `Local` handle directly in the
             // builder.
             self.builder.def_local(Local::new(0), context_val);
         }
-    }
-
-    /// Creates a known import, if not already defined.
-    /// Returning the index of the function in the IR.
-    fn maybe_add_function_import(
-        &mut self,
-        module: &'static str,
-        func: &'static str,
-        params: &[Type],
-        returns: Option<Type>,
-    ) -> (Signature, Func) {
-        if self.env.imported_funcs.contains_key(func) {
-            return self.env.imported_funcs.get(func).cloned().unwrap();
-        }
-
-        let signature_data = SignatureData {
-            params: params.into(),
-            returns: returns.map(|t| vec![t]).unwrap_or_default(),
-        };
-
-        let sig_handle = self.env.result.signatures.push(signature_data);
-        let func_handle = self
-            .env
-            .result
-            .funcs
-            .push(FuncDecl::Import(sig_handle, "".into()));
-        self.env.result.imports.push(Import {
-            module: module.into(),
-            name: func.into(),
-            kind: ImportKind::Func(func_handle),
-        });
-        self.env
-            .imported_funcs
-            .insert(func, (sig_handle, func_handle));
-
-        (sig_handle, func_handle)
     }
 
     /// Maybe add a defined a function for the given translation
@@ -367,12 +331,11 @@ impl<'a, 'data> Frontend<'a, 'data> {
                 PushI8 { val } => {
                     let context_val = self.builder.use_local(Local::new(0));
                     let val = self.builder.instr_builder().i32const(val as u32);
-                    let (module, name, params, returns) = crt::new_int32();
                     let (_, new_int32_func) =
-                        self.maybe_add_function_import(module, name, &params, Some(returns));
+                        self.env.imported_funcs[&crt::new_int32()];
 
-                    self.stack.push(StackVal::new(context_val, Type::I32));
-                    self.stack.push(StackVal::new(val, Type::I32));
+                    self.stack.push(StackVal::i32(context_val));
+                    self.stack.push(StackVal::i32(val));
                     let (call_ty, val) = self.make_call(new_int32_func);
                     self.stack.push(StackVal::new(val, call_ty));
                 }
@@ -410,14 +373,13 @@ impl<'a, 'data> Frontend<'a, 'data> {
                     let context_val = self.builder.use_local(Local::new(0));
 
                     // Prepare the arguments through the abstract value stack.
-                    self.stack.push(StackVal::new(context_val, Type::I32));
-                    self.stack.push(StackVal::new(argc_val, Type::I32));
-                    self.stack.push(StackVal::new(magic_val, Type::I32));
+                    self.stack.push(StackVal::i32(context_val));
+                    self.stack.push(StackVal::i32(argc_val));
+                    self.stack.push(StackVal::i32(magic_val));
 
                     // Make the call to create the closure.
-                    let (module, name, params, returns) = crt::closure();
                     let (_, closure_func) =
-                        self.maybe_add_function_import(module, name, &params, Some(returns));
+                        self.env.imported_funcs[&crt::closure()];
                     let (call_ty, closure_val) = self.make_call(closure_func);
                     self.stack.push(StackVal::new(closure_val, call_ty));
 
@@ -428,18 +390,17 @@ impl<'a, 'data> Frontend<'a, 'data> {
                             todo!()
                         }
 
-                        let (module, name, params) = crt::resolve_non_local_var_ref();
                         let (_, resolve_non_local_var_refs_func) =
-                            self.maybe_add_function_import(module, name, &params, None);
+                            self.env.imported_funcs[&crt::resolve_non_local_var_ref()];
 
                         let func_index_val =
                             self.builder.instr_builder().i32const(func_index.as_u32());
                         let cv_index_val = self.builder.instr_builder().i32const(cv.index);
 
                         // Use the stack to prepare the arguments.
-                        self.stack.push(StackVal::new(context_val, Type::I32));
-                        self.stack.push(StackVal::new(func_index_val, Type::I32));
-                        self.stack.push(StackVal::new(cv_index_val, Type::I32));
+                        self.stack.push(StackVal::i32(context_val));
+                        self.stack.push(StackVal::i32(func_index_val));
+                        self.stack.push(StackVal::i32(cv_index_val));
                         self.make_call(resolve_non_local_var_refs_func);
                     }
                 }
@@ -448,14 +409,13 @@ impl<'a, 'data> Frontend<'a, 'data> {
                     let val = self.stack.pop1();
                     let context_val = self.builder.use_local(Local::new(0));
 
-                    let (module, name, args) = crt::put_var_ref();
                     let (_, put_var_ref_func) =
-                        self.maybe_add_function_import(module, name, &args, None);
+                        self.env.imported_funcs[&crt::put_var_ref()];
 
                     let cv_index_val = self.builder.instr_builder().i32const(index.as_u32());
 
-                    self.stack.push(StackVal::new(context_val, Type::I32));
-                    self.stack.push(StackVal::new(cv_index_val, Type::I32));
+                    self.stack.push(StackVal::i32(context_val));
+                    self.stack.push(StackVal::i32(cv_index_val));
                     self.stack.push(val);
                     self.make_call(put_var_ref_func);
                 }
@@ -463,18 +423,18 @@ impl<'a, 'data> Frontend<'a, 'data> {
                 GetVarRef { index } => {
                     let context_val = self.builder.use_local(Local::new(0));
 
-                    let (module, name, args, returns) = crt::get_var_ref();
                     let (_, get_var_ref_func) =
-                        self.maybe_add_function_import(module, name, &args, Some(returns));
+                        self.env.imported_funcs[&crt::get_var_ref()];
 
                     let cv_index_val = self.builder.instr_builder().i32const(index.as_u32());
-                    self.stack.push(StackVal::new(context_val, Type::I32));
-                    self.stack.push(StackVal::new(cv_index_val, Type::I32));
+                    self.stack.push(StackVal::i32(context_val));
+                    self.stack.push(StackVal::i32(cv_index_val));
                     let (call_ty, val) = self.make_call(get_var_ref_func);
                     self.stack.push(StackVal::new(val, call_ty));
                 }
 
-                _ => todo!(),
+		_ => {}
+                // _ => todo!(),
             };
         }
         Ok(())

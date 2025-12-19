@@ -449,6 +449,11 @@ impl Generator {
         jac_translate::printer::print(&bc)
     }
 
+    pub fn compile(&self, js: &js::JS) -> Result<Vec<u8>> {
+	let bc = bytecode::compile_source(&self.plugin, js.as_bytes())?;
+	jacc::compile(&bc)
+    }
+
     /// Generate a Wasm module which will run the provided JS source code.
     pub fn generate(&mut self, js: &js::JS) -> Result<Vec<u8>> {
         if self.wit_opts.defined() {
