@@ -18,11 +18,14 @@ impl StackVal {
     }
 
     pub fn i32(val: Value) -> Self {
-	Self  { val, ty: Some(Type::I32) }
+        Self {
+            val,
+            ty: Some(Type::I32),
+        }
     }
 
     pub fn void(val: Value) -> Self {
-	Self { val, ty: None }
+        Self { val, ty: None }
     }
 }
 

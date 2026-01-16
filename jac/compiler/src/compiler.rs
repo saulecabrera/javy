@@ -1,5 +1,5 @@
-use crate::crt;
 use crate::builder::FunctionBuilder;
+use crate::crt;
 use crate::frontend::{Frontend, sig};
 use anyhow::Result;
 use jac_translate::{
@@ -8,8 +8,9 @@ use jac_translate::{
 };
 use std::collections::{BTreeMap, HashMap};
 use waffle::{
-    Func, FuncDecl, Import, ImportKind, Module, Signature, SignatureData, Table, TableData, Type,
-    declare_entity, entity::EntityVec,
+    Func, FuncDecl, Import, ImportKind, Local, Memory, MemoryArg, MemoryData, Module, Signature,
+    SignatureData, Table, TableData, Type, declare_entity,
+    entity::{EntityRef, EntityVec},
 };
 
 /// A function reference index.
@@ -27,6 +28,7 @@ pub(crate) struct FuncEnv<'a, 'data> {
     pub imported_funcs: &'a mut HashMap<crt::RuntimeFunction, (Signature, Func)>,
     pub function_table_handle: Table,
     pub function_table: &'a mut EntityVec<FuncRef, Func>,
+    pub memory_handle: Memory,
 }
 
 /// QuickJS-bytecode-to-Wasm compiler.
@@ -60,7 +62,7 @@ impl<'data> Compiler<'data> {
 
     /// Perform compilation into Wasm bytes.
     pub fn compile(mut self) -> Result<Vec<u8>> {
-        let table_handle = self.add_runtime_imports();
+        let (table_handle, memory_handle) = self.add_runtime_imports();
 
         for func in &self.translation.module.functions {
             let sig = if self.defined_funcs.contains_key(&func.index) {
@@ -86,39 +88,40 @@ impl<'data> Compiler<'data> {
                 imported_funcs: &mut self.imported_funcs,
                 function_table: &mut self.function_table,
                 function_table_handle: table_handle,
+                memory_handle,
             };
             let body = Frontend::new(env, sig).build()?;
             self.result.funcs[self.defined_funcs[&func.index].1] =
                 FuncDecl::Body(sig, "".into(), body);
         }
 
-        self.patch_functions_table(table_handle);
+        self.patch_functions_table(table_handle, memory_handle);
         self.result.to_wasm_bytes()
     }
 
     /// Adds all the runtime imports to the module.
-    fn add_runtime_imports(&mut self) -> Table {
-	for builtin in crt::function_imports() {
-	    let signature_data = SignatureData {
-		params: builtin.params.into(),
-		returns: builtin.rets.map(|t| vec![t]).unwrap_or_default(),
-	    };
+    fn add_runtime_imports(&mut self) -> (Table, Memory) {
+        for builtin in crt::function_imports() {
+            let signature_data = SignatureData {
+                params: builtin.params.into(),
+                returns: builtin.rets.map(|t| vec![t]).unwrap_or_default(),
+            };
 
             let sig_handle = self.result.signatures.push(signature_data);
             let func_handle = self
-		.result
-		.funcs
-		.push(FuncDecl::Import(sig_handle, builtin.name.into()));
+                .result
+                .funcs
+                .push(FuncDecl::Import(sig_handle, builtin.name.into()));
             self.result.imports.push(Import {
-		module: builtin.module.into(),
-		name: builtin.name.into(),
-		kind: ImportKind::Func(func_handle),
+                module: builtin.module.into(),
+                name: builtin.name.into(),
+                kind: ImportKind::Func(func_handle),
             });
             self.imported_funcs
-		.insert(builtin, (sig_handle, func_handle));
-	}
+                .insert(builtin, (sig_handle, func_handle));
+        }
 
-	self.import_functions_table()
+        (self.import_functions_table(), self.import_memory())
     }
 
     /// Imports the functions table, which will contain all the Wasm
@@ -145,57 +148,126 @@ impl<'data> Compiler<'data> {
         table_handle
     }
 
+    /// Imports the runtime's memory.
+    fn import_memory(&mut self) -> Memory {
+        let memory_data = MemoryData {
+            initial_pages: 0,
+            maximum_pages: None,
+            segments: vec![],
+        };
+
+        let memory_handle = self.result.memories.push(memory_data);
+        let (module, name) = crt::memory();
+        self.result.imports.push(Import {
+            module: module.into(),
+            name: name.into(),
+            kind: ImportKind::Memory(memory_handle),
+        });
+
+        memory_handle
+    }
+
     /// Once compilation is finished, patch the functions table with
     /// the indices of the trampoline generated for each compiled
     /// function.
-    fn patch_functions_table(&mut self, table: Table) {
+    fn patch_functions_table(&mut self, table: Table, memory: Memory) {
+        let mut defined_trampolines = vec![];
 
-	let mut defined_trampolines = vec![];
-
-	for (table_indx, func_handle) in self.function_table.clone().entries() {
-	    defined_trampolines.push(self.wrap(*func_handle));
-	}
+        for (table_idx, func_handle) in self.function_table.clone().entries() {
+            defined_trampolines.push(self.wrap(*func_handle, table, memory));
+        }
 
         let table_data = &mut self.result.tables[table];
-	let elem_count: u64 = u64::try_from(self.function_table.len()).unwrap();
-	table_data.initial = elem_count;
-	table_data.max = Some(elem_count);
+        let elem_count: u64 = u64::try_from(self.function_table.len()).unwrap();
+        table_data.initial = elem_count;
+        table_data.max = Some(elem_count);
         table_data.func_elements = Some(defined_trampolines);
     }
 
     /// Defines a trampoline for QuickJS to Wasm functions.
     /// The trampoline has the following signature:
     /// (context: *mut JSContext, this: JSValue, argc: i32, argv: *mut JSValue, index: i32) -> JSValue
-    fn wrap(&mut self, inner: Func) -> Func {
+    fn wrap(&mut self, inner: Func, table: Table, memory: Memory) -> Func {
         let sig = SignatureData {
             params: vec![Type::I32, Type::I64, Type::I32, Type::I32, Type::I32],
             returns: vec![Type::I64],
         };
         let sig_handle = self.result.signatures.push(sig.clone());
-	let mut builder = FunctionBuilder::new(sig_handle);
-	builder.result.n_params = sig.params.len();
-	builder.result.rets = sig.returns.clone();
+        let mut builder = FunctionBuilder::new(sig_handle);
+        builder.result.n_params = sig.params.len();
+        builder.result.rets = sig.returns.clone();
 
-	for p in &sig.params {
-	    builder.result.locals.push((*p).into());
-	}
+        for p in &sig.params {
+            builder.result.locals.push((*p).into());
+        }
 
-	let entry = builder.result.add_block();
-	builder.result.entry = entry;
-	builder.seal(entry);
-	builder.current_block(entry);
+        let entry = builder.result.add_block();
+        builder.result.entry = entry;
+        builder.seal(entry);
+        builder.switch_to_block(entry);
 
-	for (local, ty) in builder.result.locals.clone().entries() {
-	    let val = builder.result.add_blockparam(entry, *ty);
-	    builder.declare_local(local, *ty);
-	    builder.def_local(local, val);
-	}
+        for (local, ty) in builder.result.locals.clone().entries() {
+            let val = builder.result.add_blockparam(entry, *ty);
+            builder.declare_local(local, *ty);
+            builder.def_local(local, val);
+        }
 
+        // Declare locals for each of the callee's params.
+        let callee = &self.result.funcs[inner];
+        let callee_sig = callee.sig();
+        let callee_sig_data = &self.result.signatures[callee_sig];
+        let arg_locals_index = builder.result.locals.len();
 
-	let exit = builder.result.add_block();
-	builder.add_blockparams(exit, &sig.returns);
-	builder.exit(exit);
-	
-	self.result.funcs.push(FuncDecl::Body(sig_handle, "".into(), builder.result))
+        // Declare 1 local per callee argument, except for the first
+        // one which is reserved for the JSContext and which we
+        // already have access to.
+        for p in &callee_sig_data.params[1..] {
+            let ty: Type = (*p).into();
+            let local = builder.result.locals.push(ty).into();
+            builder.declare_local(local, ty);
+        }
+
+        // argv's index is 3.
+        let argv_ptr_val = builder.use_local(Local::new(3));
+        // All values are represented as i64.
+        let value_size = 8;
+
+        // Add the JS context to the arguments vector.
+        let mut args = vec![builder.use_local(Local::new(0))];
+        // The first parameter is reserved for the `JSContext`.
+        let args_len = callee_sig_data.params.len().checked_sub(1).unwrap_or(0);
+        for i in 0..args_len {
+            let offset_val = builder
+                .instr_builder()
+                .i32const(u32::try_from(i * value_size).unwrap());
+            let addr_val = builder.instr_builder().i32add(argv_ptr_val, offset_val);
+            let loaded_val = builder.instr_builder().i64load(
+                MemoryArg {
+                    align: 0,
+                    offset: 0,
+                    memory,
+                },
+                addr_val,
+            );
+            let arg_local = Local::new(arg_locals_index + i);
+            builder.def_local(arg_local, loaded_val);
+            args.push(builder.use_local(arg_local));
+        }
+
+        let return_val =
+            builder
+                .instr_builder()
+                .call(inner, &args, callee_sig_data.returns.first().copied());
+
+        // Exit
+        let exit = builder.result.add_block();
+        builder.branch(exit);
+        builder.seal(exit);
+        builder.exit(exit);
+        builder.switch_to_block(exit);
+        builder.instr_builder().ret(&[return_val]);
+        self.result
+            .funcs
+            .push(FuncDecl::Body(sig_handle, "".into(), builder.result))
     }
 }

@@ -91,9 +91,9 @@ impl<'a, 'data> CallBuilder<'a, 'data> {
         let ret = self
             .builder
             .instr_builder()
-            .call(callee, &values, sig.returns.get(0).copied());
+            .call(callee, &values, sig.returns.first().copied());
         self.stack.drop(param_count);
-        (sig.returns.get(0).copied(), ret)
+        (sig.returns.first().copied(), ret)
     }
 }
 
@@ -152,8 +152,7 @@ impl<'a, 'data> Frontend<'a, 'data> {
 
             // Pushing to the abstract stack to make it easier to derive the call args
             // via `Stack::get_op_args` below as opposed having a different code path.
-            self.stack
-                .push(StackVal::i32(closure_vars_count_val));
+            self.stack.push(StackVal::i32(closure_vars_count_val));
 
             let builtin = crt::init();
             let (_, func) = self.env.imported_funcs[&builtin];
@@ -241,7 +240,7 @@ impl<'a, 'data> Frontend<'a, 'data> {
         let entry = self.builder.result.add_block();
         self.builder.result.entry = entry;
         self.builder.seal(entry);
-        self.builder.current_block(entry);
+        self.builder.switch_to_block(entry);
 
         // Declare argument locals and add block param values.
         // FIXME: Unfortunate clone below, to avoid borrow checker
@@ -331,8 +330,7 @@ impl<'a, 'data> Frontend<'a, 'data> {
                 PushI8 { val } => {
                     let context_val = self.builder.use_local(Local::new(0));
                     let val = self.builder.instr_builder().i32const(val as u32);
-                    let (_, new_int32_func) =
-                        self.env.imported_funcs[&crt::new_int32()];
+                    let (_, new_int32_func) = self.env.imported_funcs[&crt::new_int32()];
 
                     self.stack.push(StackVal::i32(context_val));
                     self.stack.push(StackVal::i32(val));
@@ -378,8 +376,7 @@ impl<'a, 'data> Frontend<'a, 'data> {
                     self.stack.push(StackVal::i32(magic_val));
 
                     // Make the call to create the closure.
-                    let (_, closure_func) =
-                        self.env.imported_funcs[&crt::closure()];
+                    let (_, closure_func) = self.env.imported_funcs[&crt::closure()];
                     let (call_ty, closure_val) = self.make_call(closure_func);
                     self.stack.push(StackVal::new(closure_val, call_ty));
 
@@ -409,8 +406,7 @@ impl<'a, 'data> Frontend<'a, 'data> {
                     let val = self.stack.pop1();
                     let context_val = self.builder.use_local(Local::new(0));
 
-                    let (_, put_var_ref_func) =
-                        self.env.imported_funcs[&crt::put_var_ref()];
+                    let (_, put_var_ref_func) = self.env.imported_funcs[&crt::put_var_ref()];
 
                     let cv_index_val = self.builder.instr_builder().i32const(index.as_u32());
 
@@ -423,8 +419,7 @@ impl<'a, 'data> Frontend<'a, 'data> {
                 GetVarRef { index } => {
                     let context_val = self.builder.use_local(Local::new(0));
 
-                    let (_, get_var_ref_func) =
-                        self.env.imported_funcs[&crt::get_var_ref()];
+                    let (_, get_var_ref_func) = self.env.imported_funcs[&crt::get_var_ref()];
 
                     let cv_index_val = self.builder.instr_builder().i32const(index.as_u32());
                     self.stack.push(StackVal::i32(context_val));
@@ -433,8 +428,9 @@ impl<'a, 'data> Frontend<'a, 'data> {
                     self.stack.push(StackVal::new(val, call_ty));
                 }
 
-		_ => {}
-                // _ => todo!(),
+		// Should be `todo!()`; avoiding a panic allows
+		// progressive testing of code generation.
+                _ => {}
             };
         }
         Ok(())

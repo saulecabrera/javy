@@ -2,8 +2,8 @@
 
 use std::collections::{HashMap, HashSet};
 use waffle::{
-    Block, BlockTarget, Func, FunctionBody, Local, MemoryArg, Operator, Signature, Terminator,
-    Type, Value,
+    Block, BlockTarget, Func, FunctionBody, Local, MemoryArg, Operator, Signature, Table,
+    Terminator, Type, Value,
 };
 
 /// Function Builder.
@@ -325,5 +325,35 @@ impl<'a> InstructionBuilder<'a> {
         } else {
             self.func_builder.result.add_op(self.block, op, args, &[])
         }
+    }
+
+    pub fn call_indirect(
+        &mut self,
+        sig: Signature,
+        table: Table,
+        args: &[Value],
+        ret: Option<Type>,
+    ) -> Value {
+        let op = Operator::CallIndirect {
+            sig_index: sig,
+            table_index: table,
+        };
+
+        if let Some(ret) = ret {
+            self.func_builder
+                .result
+                .add_op(self.block, op, args, &[ret])
+        } else {
+            self.func_builder.result.add_op(self.block, op, args, &[])
+        }
+    }
+
+    pub fn ret(&mut self, values: &[Value]) {
+        self.func_builder.result.set_terminator(
+            self.block,
+            Terminator::Return {
+                values: values.into(),
+            },
+        );
     }
 }

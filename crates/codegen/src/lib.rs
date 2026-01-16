@@ -450,8 +450,8 @@ impl Generator {
     }
 
     pub fn compile(&self, js: &js::JS) -> Result<Vec<u8>> {
-	let bc = bytecode::compile_source(&self.plugin, js.as_bytes())?;
-	jacc::compile(&bc)
+        let bc = bytecode::compile_source(&self.plugin, js.as_bytes())?;
+        jacc::compile(&bc)
     }
 
     /// Generate a Wasm module which will run the provided JS source code.

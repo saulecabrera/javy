@@ -16,6 +16,5 @@ use compiler::Compiler;
 pub fn compile(bytes: &[u8]) -> Result<Vec<u8>> {
     let mut builder = TranslationBuilder::new();
     let translation = builder.translate(bytes)?;
-    Compiler::new(translation)
-	.compile()
+    Compiler::new(translation).compile()
 }
