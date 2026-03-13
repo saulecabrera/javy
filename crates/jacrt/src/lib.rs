@@ -36,8 +36,7 @@ extern "C" fn init(var_ref_slots: usize) -> *mut qjs::JSContext {
 #[unsafe(no_mangle)]
 unsafe extern "C" fn closure(
     raw_context: *mut qjs::JSContext,
-    // _name_ptr: *mut ffi::c_char,
-    // _name_len: u32,
+    func_index: u32,
     argc: u32,
     magic: u32,
 ) -> qjs::JSValue {
@@ -57,7 +56,7 @@ unsafe extern "C" fn closure(
         )
     };
     let crt = CompilerRuntime::mut_from_context(cx.clone());
-    crt.push_default_env(FuncEnvHandle::from_usize(magic as usize));
+    crt.push_default_env(FuncEnvHandle::from_usize(func_index as usize));
     // Increase reference count.
     unsafe { qjs::JS_DupValue(cx.as_raw().as_ptr(), raw_func) };
     unsafe { Value::from_raw(cx.clone(), raw_func).as_raw() }
@@ -100,71 +99,22 @@ unsafe extern "C" fn get_var_ref_check(context: *mut qjs::JSContext, index: usiz
     result.as_raw()
 }
 
-#[unsafe(export_name = "new-int32")]
-unsafe extern "C" fn new_int32(context: *mut qjs::JSContext, raw: i32) -> qjs::JSValue {
-    let cx = context_from_raw(context);
-    Value::new_int(cx.clone(), raw).clone().as_raw()
-}
-
-#[unsafe(no_mangle)]
-unsafe extern "C" fn undef(context: *mut qjs::JSContext) -> qjs::JSValue {
-    let cx = context_from_raw(context);
-    Value::new_undefined(cx.clone()).clone().as_raw()
-}
-
-#[unsafe(no_mangle)]
-unsafe extern "C" fn call(
-    context: *mut qjs::JSContext,
-    callee: qjs::JSValue,
-    // TODO: add rest of the call arguments
-) -> qjs::JSValue {
-    let cx = context_from_raw(context);
-    let result = unsafe {
-        qjs::JS_Call(
-            cx.as_raw().as_ptr(),
-            Value::from_raw(cx.clone(), callee).as_raw().clone(),
-            Value::new_undefined(cx.clone()).as_raw(),
-            0,
-            ptr::null_mut(),
-        )
-    };
-
-    // TODO:Increase ref count.
-    unsafe { Value::from_raw(cx.clone(), result).clone().as_raw() }
-}
-
-#[unsafe(no_mangle)]
-unsafe extern "C" fn mul(
-    context: *mut qjs::JSContext,
-    lhs: qjs::JSValue,
-    rhs: qjs::JSValue,
-) -> qjs::JSValue {
-    let cx = context_from_raw(context);
-    let lhs = unsafe { Value::from_raw(cx.clone(), lhs) };
-    let rhs = unsafe { Value::from_raw(cx.clone(), rhs) };
-
-    if lhs.is_number() && rhs.is_number() {
-        let result = Value::new_number(
-            cx.clone(),
-            lhs.as_number().unwrap() * rhs.as_number().unwrap(),
-        );
-        result.clone().as_raw()
-    } else {
-        // TODO: handle all the other cases.
-        unreachable!()
-    }
-}
-
 #[link(wasm_import_module = "jacrt-link")]
 unsafe extern "C" {
-    fn inv(index: usize, context: *mut qjs::JSContext) -> qjs::JSValue;
+    fn inv(
+        index: usize,
+        context: *mut qjs::JSContext,
+        this: qjs::JSValue,
+        argc: i32,
+        argv: *mut qjs::JSValue,
+    ) -> qjs::JSValue;
 }
 /// Trampoline function to handle JS-to-Wasm calls.
 unsafe extern "C" fn callback(
     context: *mut qjs::JSContext,
-    _this: qjs::JSValue,
-    _argc: i32,
-    _argv: *mut qjs::JSValue,
+    this: qjs::JSValue,
+    argc: i32,
+    argv: *mut qjs::JSValue,
     magic: i32,
     _data: *mut qjs::JSValue,
 ) -> qjs::JSValue {
@@ -173,7 +123,15 @@ unsafe extern "C" fn callback(
     crt.set_current_env(FuncEnvHandle::from_usize(magic as usize));
     // TODO: Frame
     // TODO: Restore current env handle?
-    let res = unsafe { inv(magic as usize, cx.clone().as_raw().as_ptr()) };
+    let res = unsafe {
+        inv(
+            magic as usize,
+            cx.clone().as_raw().as_ptr(),
+            this,
+            argc,
+            argv,
+        )
+    };
     let res = unsafe { Value::from_raw(cx.clone(), res).clone() };
     res.as_raw()
 }

@@ -241,7 +241,7 @@ impl FunctionBuilder {
         return None;
     }
 
-    /// Sets an uncoditional branch terminator for the current block.
+    /// Sets an unconditional branch terminator for the current block.
     pub fn branch(&mut self, target: Block) {
         let terminator = Terminator::Br {
             target: BlockTarget {
@@ -266,6 +266,8 @@ impl FunctionBuilder {
                 args: vec![],
             },
         };
+        self.result
+            .set_terminator(self.unwrap_current_block(), terminator);
     }
 }
 
@@ -287,6 +289,25 @@ impl<'a> InstructionBuilder<'a> {
             .add_op(self.block, op, &[], &[Type::I32])
     }
 
+    /// Inline a constant JSValue using the NaN boxing `JS_MKVAL` formula:
+    /// `(tag << 32) | val`
+    pub fn mkval(&mut self, tag: u64, val: u64) -> Value {
+        self.i64const((tag << 32) | val)
+    }
+
+    pub fn i64const(&mut self, value: u64) -> Value {
+        let op = Operator::I64Const { value };
+        self.func_builder
+            .result
+            .add_op(self.block, op, &[], &[Type::I64])
+    }
+
+    pub fn i32eqz(&mut self, val: Value) -> Value {
+        self.func_builder
+            .result
+            .add_op(self.block, Operator::I32Eqz, &[val], &[Type::I32])
+    }
+
     pub fn i32ge_u(&mut self, lhs: Value, rhs: Value) -> Value {
         self.func_builder
             .result
@@ -305,6 +326,12 @@ impl<'a> InstructionBuilder<'a> {
             .add_op(self.block, Operator::I32Add, &[lhs, rhs], &[Type::I32])
     }
 
+    pub fn f64const(&mut self, value: u64) -> Value {
+        self.func_builder
+            .result
+            .add_op(self.block, Operator::F64Const { value }, &[], &[Type::F64])
+    }
+
     pub fn i64load(&mut self, mem: MemoryArg, addr: Value) -> Value {
         self.func_builder.result.add_op(
             self.block,
@@ -312,6 +339,15 @@ impl<'a> InstructionBuilder<'a> {
             &[addr],
             &[Type::I64],
         )
+    }
+
+    pub fn i64store(&mut self, mem: MemoryArg, addr: Value, value: Value) {
+        self.func_builder.result.add_op(
+            self.block,
+            Operator::I64Store { memory: mem },
+            &[addr, value],
+            &[],
+        );
     }
 
     pub fn call(&mut self, callee: Func, args: &[Value], ret: Option<Type>) -> Value {

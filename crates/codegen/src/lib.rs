@@ -449,7 +449,14 @@ impl Generator {
         jac_translate::printer::print(&bc)
     }
 
-    pub fn compile(&self, js: &js::JS) -> Result<Vec<u8>> {
+    /// Compile the JavaScript source into QuickJS bytecode and
+    /// generate a human-readable trace report from the raw execution trace.
+    pub fn trace_bytecode(&self, js: &js::JS, raw_trace: &str) -> Result<Vec<String>> {
+        let bc = bytecode::compile_source(&self.plugin, js.as_bytes())?;
+        parsetrace::trace(&bc, raw_trace)
+    }
+
+    pub fn compile(&self, js: &js::JS) -> Result<(Vec<u8>, Vec<u8>)> {
         let bc = bytecode::compile_source(&self.plugin, js.as_bytes())?;
         jacc::compile(&bc)
     }

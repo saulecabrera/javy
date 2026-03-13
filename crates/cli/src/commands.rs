@@ -39,6 +39,13 @@ pub enum Command {
     /// Compiles JavaScript source to WebAssembly ahead-of-time.
     #[command(arg_required_else_help = true)]
     Compile(CompileCommandOpts),
+    /// Compiles the JavaScript source and prints the bytecode in a
+    /// human readable form.
+    #[command(arg_required_else_help = true)]
+    PrintBytecode(PrintBytecodeOpts),
+    /// Performs bytecode execution tracing on the given raw trace.
+    #[command(arg_required_else_help = true)]
+    Trace(TraceOpts),
     /// Emits the plugin binary that is required to run dynamically
     /// linked WebAssembly modules.
     EmitPlugin(EmitPluginCommandOpts),
@@ -84,6 +91,28 @@ pub struct CompileCommandOpts {
     #[arg(short = 'p', long = "print-bytecode")]
     /// Print JS bytecode.
     pub print_bytecode: bool,
+}
+
+#[derive(Debug, Parser)]
+pub struct TraceOpts {
+    #[arg(value_name = "INPUT", required = true)]
+    /// Path of the JavaScript input file.
+    pub input: PathBuf,
+
+    #[arg(value_name = "TRACE", required = true)]
+    /// Path of the trace file.
+    pub trace: PathBuf,
+
+    #[arg(short, default_value = "trace.output")]
+    /// Desired path of the trace result.
+    pub output: PathBuf,
+}
+
+#[derive(Debug, Parser)]
+pub struct PrintBytecodeOpts {
+    #[arg(value_name = "INPUT", required = true)]
+    /// Path of JavaScript input file.
+    pub input: PathBuf,
 }
 
 #[derive(Debug, Parser)]

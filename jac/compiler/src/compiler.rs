@@ -1,12 +1,13 @@
 use crate::builder::FunctionBuilder;
-use crate::crt;
 use crate::frontend::{Frontend, sig};
+use crate::{args, crt};
 use anyhow::Result;
 use jac_translate::{
     FunctionTranslation, Translation,
     quickpars::{FuncIndex, Opcode},
 };
 use std::collections::{BTreeMap, HashMap};
+use waffle::{Export, ExportKind};
 use waffle::{
     Func, FuncDecl, Import, ImportKind, Local, Memory, MemoryArg, MemoryData, Module, Signature,
     SignatureData, Table, TableData, Type, declare_entity,
@@ -61,7 +62,7 @@ impl<'data> Compiler<'data> {
     }
 
     /// Perform compilation into Wasm bytes.
-    pub fn compile(mut self) -> Result<Vec<u8>> {
+    pub fn compile(mut self) -> Result<(Vec<u8>, usize)> {
         let (table_handle, memory_handle) = self.add_runtime_imports();
 
         for func in &self.translation.module.functions {
@@ -93,10 +94,18 @@ impl<'data> Compiler<'data> {
             let body = Frontend::new(env, sig).build()?;
             self.result.funcs[self.defined_funcs[&func.index].1] =
                 FuncDecl::Body(sig, "".into(), body);
+
+            if func.is_top_level_eval(&self.translation) {
+                let export = Export {
+                    name: "_start".into(),
+                    kind: ExportKind::Func(self.defined_funcs[&func.index].1),
+                };
+                self.result.exports.push(export);
+            }
         }
 
         self.patch_functions_table(table_handle, memory_handle);
-        self.result.to_wasm_bytes()
+        Ok((self.result.to_wasm_bytes()?, self.function_table.len()))
     }
 
     /// Adds all the runtime imports to the module.
@@ -131,7 +140,7 @@ impl<'data> Compiler<'data> {
             ty: Type::FuncRef,
             // NB: the table details will be patched later on, once
             // all the compiled functions are known.
-            // See: patch functions table.
+            // See: `patch_functions_table`
             initial: 0,
             max: None,
             func_elements: None,
@@ -186,11 +195,12 @@ impl<'data> Compiler<'data> {
 
     /// Defines a trampoline for QuickJS to Wasm functions.
     /// The trampoline has the following signature:
-    /// (context: *mut JSContext, this: JSValue, argc: i32, argv: *mut JSValue, index: i32) -> JSValue
+    /// (context: *mut JSContext, this: JSValue, argc: i32, argv: *mut JSValue) -> JSValue
     fn wrap(&mut self, inner: Func, table: Table, memory: Memory) -> Func {
+        let (trampoline_params, trampoline_ret) = crt::trampoline_signature();
         let sig = SignatureData {
-            params: vec![Type::I32, Type::I64, Type::I32, Type::I32, Type::I32],
-            returns: vec![Type::I64],
+            params: trampoline_params.into(),
+            returns: vec![trampoline_ret],
         };
         let sig_handle = self.result.signatures.push(sig.clone());
         let mut builder = FunctionBuilder::new(sig_handle);
@@ -227,20 +237,33 @@ impl<'data> Compiler<'data> {
             builder.declare_local(local, ty);
         }
 
-        // argv's index is 3.
-        let argv_ptr_val = builder.use_local(Local::new(3));
+        // The first parameter is reserved for the `JSContext`.
+        let args_len = callee_sig_data.params.len().checked_sub(1).unwrap_or(0);
         // All values are represented as i64.
         let value_size = 8;
 
-        // Add the JS context to the arguments vector.
-        let mut args = vec![builder.use_local(Local::new(0))];
-        // The first parameter is reserved for the `JSContext`.
-        let args_len = callee_sig_data.params.len().checked_sub(1).unwrap_or(0);
+        // Check if argc >= args_len (all arguments provided).
+        // argc is at local index 2.
+        let argc = builder.use_local(Local::new(2));
+        let args_len_const = builder
+            .instr_builder()
+            .i32const(u32::try_from(args_len).unwrap());
+        let has_all_args = builder.instr_builder().i32ge_u(argc, args_len_const);
+
+        let fast_path = builder.result.add_block();
+        let slow_path = builder.result.add_block();
+        let call_block = builder.result.add_block();
+        builder.branch_if(has_all_args, fast_path, slow_path);
+
+        // Fast path: load all arguments from argv.
+        builder.seal(fast_path);
+        builder.switch_to_block(fast_path);
+        let argv_ptr = builder.use_local(Local::new(3));
         for i in 0..args_len {
             let offset_val = builder
                 .instr_builder()
                 .i32const(u32::try_from(i * value_size).unwrap());
-            let addr_val = builder.instr_builder().i32add(argv_ptr_val, offset_val);
+            let addr_val = builder.instr_builder().i32add(argv_ptr, offset_val);
             let loaded_val = builder.instr_builder().i64load(
                 MemoryArg {
                     align: 0,
@@ -251,9 +274,61 @@ impl<'data> Compiler<'data> {
             );
             let arg_local = Local::new(arg_locals_index + i);
             builder.def_local(arg_local, loaded_val);
+        }
+        builder.branch(call_block);
+
+        builder.seal(slow_path);
+        builder.switch_to_block(slow_path);
+        let slow_argv_ptr = builder.use_local(Local::new(3));
+        let slow_argc = builder.use_local(Local::new(2));
+        for i in 0..args_len {
+            let arg_local = Local::new(arg_locals_index + i);
+            let idx = builder.instr_builder().i32const(u32::try_from(i).unwrap());
+            // i >= argc means this argument was not provided.
+            let is_missing = builder.instr_builder().i32ge_u(idx, slow_argc);
+
+            let load_block = builder.result.add_block();
+            let undef_block = builder.result.add_block();
+            let merge_block = builder.result.add_block();
+            builder.branch_if(is_missing, undef_block, load_block);
+
+            // Load from argv.
+            builder.seal(load_block);
+            builder.switch_to_block(load_block);
+            let offset_val = builder
+                .instr_builder()
+                .i32const(u32::try_from(i * value_size).unwrap());
+            let addr_val = builder.instr_builder().i32add(slow_argv_ptr, offset_val);
+            let loaded_val = builder.instr_builder().i64load(
+                MemoryArg {
+                    align: 0,
+                    offset: 0,
+                    memory,
+                },
+                addr_val,
+            );
+            builder.def_local(arg_local, loaded_val);
+            builder.branch(merge_block);
+
+            // Use undefined.
+            builder.seal(undef_block);
+            builder.switch_to_block(undef_block);
+            let undef_val = builder.instr_builder().mkval(crt::JS_TAG_UNDEFINED, 0);
+            builder.def_local(arg_local, undef_val);
+            builder.branch(merge_block);
+
+            builder.seal(merge_block);
+            builder.switch_to_block(merge_block);
+        }
+        builder.branch(call_block);
+
+        builder.seal(call_block);
+        builder.switch_to_block(call_block);
+        let mut args = vec![builder.use_local(args::context())];
+        for i in 0..args_len {
+            let arg_local = Local::new(arg_locals_index + i);
             args.push(builder.use_local(arg_local));
         }
-
         let return_val =
             builder
                 .instr_builder()

@@ -4,6 +4,7 @@ use crate::compiler::FuncEnv;
 use waffle::{Operator, Type, Value};
 
 /// Abstract stack value.
+#[derive(Debug)]
 pub(crate) struct StackVal {
     /// The inner SSA value.
     pub val: Value,
@@ -24,12 +25,19 @@ impl StackVal {
         }
     }
 
+    pub fn i64(val: Value) -> Self {
+        Self {
+            val,
+            ty: Some(Type::I64),
+        }
+    }
+
     pub fn void(val: Value) -> Self {
         Self { val, ty: None }
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub(crate) struct Stack {
     inner: Vec<StackVal>,
 }
@@ -55,6 +63,8 @@ impl Stack {
 
     /// Drops the last `n` elements from the stack.
     pub fn drop(&mut self, n: usize) {
-        self.inner.truncate(n);
+        assert!(n <= self.inner.len());
+        let new_len = self.inner.len() - n;
+        self.inner.truncate(new_len);
     }
 }

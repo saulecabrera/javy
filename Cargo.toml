@@ -1,3 +1,6 @@
+[patch.crates-io]
+rquickjs = { git = "https://github.com/saulecabrera/rquickjs", branch = "patched-quickjs" }
+
 [workspace]
 members = [
   "crates/cli",

@@ -213,9 +213,7 @@ impl Printer {
                 write!(self.writer, "GetVar {}", imm)
             }
             PutVar { atom } => {
-                dbg!(&atom);
                 let imm = translation.resolve_atom_name(atom);
-                dbg!(&imm);
                 write!(self.writer, "PutVar {}", imm)
             }
             PutVarInit { atom } => {

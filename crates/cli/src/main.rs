@@ -78,14 +78,36 @@ fn main() -> Result<()> {
                 CliPlugin::new(Plugin::new(PLUGIN_MODULE.into())?, PluginKind::Default);
             let generator = Generator::new(default_plugin.into_plugin());
 
-            if opts.print_bytecode {
-                println!("{}", generator.inspect_bytecode(&js)?);
-            }
-
-            let wasm = generator.compile(&js)?;
-            fs::write(&opts.output, wasm)?;
+            let (module, linkage) = generator.compile(&js)?;
+            fs::write(&opts.output, module)?;
+            fs::write("link.wasm", linkage)?;
             Ok(())
         }
+
+	Command::PrintBytecode(opts) => {
+            let js = JS::from_file(&opts.input)?;
+            let default_plugin =
+                CliPlugin::new(Plugin::new(PLUGIN_MODULE.into())?, PluginKind::Default);
+            let generator = Generator::new(default_plugin.into_plugin());
+
+	    println!("{}", generator.inspect_bytecode(&js)?);
+	    Ok(())
+	}
+
+	Command::Trace(opts) => {
+            let js = JS::from_file(&opts.input)?;
+            let raw_trace = fs::read_to_string(&opts.trace)?;
+
+            let default_plugin =
+                CliPlugin::new(Plugin::new(PLUGIN_MODULE.into())?, PluginKind::Default);
+            let generator = Generator::new(default_plugin.into_plugin());
+
+            let trace_output = generator.trace_bytecode(&js, &raw_trace)?;
+            let output_content = trace_output.join("\n");
+
+            fs::write(&opts.output, output_content)?;
+            Ok(())
+	}
     }
 }
 
