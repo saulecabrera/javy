@@ -492,14 +492,15 @@ impl<'a, 'data> Frontend<'a, 'data> {
                         .mkval(crt::JS_TAG_INT, val as u64);
                     self.stack.push(StackVal::new(val, Some(Type::I64)));
                 }
-                // op @ Push1 | Push2 | Push5 => {
-                //     let val = match op {
-                //         Push1 => self.builder.instr_builder().mkval(crt::JS_TAG_INT, 1u64),
-                //         Push2 => self.builder.instr_builder().mkval(crt::JS_TAG_INT, 2u64),
-                //         Push5 => self.builder.instr_builder().mkval(crt::JS_TAG_INT, 5u64),
-                //     };
-                //     self.stack.push(StackVal::new(val, Some(Type::I64)));
-                // }
+                op @ (Push1 | Push2 | Push5) => {
+                    let val = match op {
+                        Push1 => self.builder.instr_builder().mkval(crt::JS_TAG_INT, 1u64),
+                        Push2 => self.builder.instr_builder().mkval(crt::JS_TAG_INT, 2u64),
+                        Push5 => self.builder.instr_builder().mkval(crt::JS_TAG_INT, 5u64),
+			_ => unreachable!(),
+                    };
+                    self.stack.push(StackVal::new(val, Some(Type::I64)));
+                }
 
                 FClosure8 { index } => {
                     let func_index = self
